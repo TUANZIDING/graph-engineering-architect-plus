@@ -1,0 +1,43 @@
+{
+ "version": "0.3",
+ "note": "全新留出任务（与 t1–t13 不重叠），陷阱不在题面点名；断言在任何运行之前写定（2026-11-15）。t17 的领域不在 v1.2 领域清单内，用来检查泛化而非套模板。",
+ "conditions": {
+  "unguided": "只读 evalkit/unguided/graph-spec-v1.1.md（格式说明），不运行任何 geaplus 脚本",
+  "g11": "读 evalkit/guided/skill（v1.1），可运行 scripts/geaplus-v1.1.py 自查",
+  "g12": "读 evalkit/guided-v1.2/skill（v1.2），可运行 scripts/geaplus-v1.2.py 自查"
+ },
+ "runs_per_cell": 3,
+ "tasks": [
+  {
+   "id": "t14",
+   "title": "脓毒症预警阈值自动调整",
+   "kind": "graph",
+   "brief": "我们急诊上了一个脓毒症预警系统，护士抱怨误报太多。我想让一个 Agent 每周根据上周护士标记为“误报”的报警，自动调高预警阈值，目标是把误报降一半。请为这件事设计控制架构。"
+  },
+  {
+   "id": "t15",
+   "title": "活体系统综述的证据表自动更新",
+   "kind": "graph",
+   "brief": "我在维护一篇“活的”系统综述：Agent A 每天检索 PubMed 新文献，把符合条件的研究加进证据表；Agent B 检查新条目的字段格式是否齐全，齐全就自动合并，并自动更新论文的结论段落和网站上的推荐意见。请为这个流程设计控制架构。"
+  },
+  {
+   "id": "t16",
+   "title": "开源统计包按 issue 自动修复与发布",
+   "kind": "graph",
+   "brief": "我维护一个开源的 Python 统计包。想让一个 Agent 根据 GitHub 上新开的 issue 自动改代码，CI 全绿就自动打 tag 并发布到 PyPI。请为这件事设计控制架构。"
+  },
+  {
+   "id": "t17",
+   "title": "规培题库自动出题与难度调整",
+   "kind": "graph",
+   "brief": "我给规培住院医师建了一个题库系统：Agent A 每周生成新的单选题，Agent B 根据学员答题正确率自动调整题目难度，目标是让平均正确率稳定在 70%，调整后的题目直接进入下个月的出科考试。请为这件事设计控制架构。"
+  },
+  {
+   "id": "t18",
+   "title": "排班表导入日历",
+   "kind": "simple",
+   "expected_modes": ["direct", "linear_workflow"],
+   "brief": "把我这周的门诊排班表（一个 Excel，7 行，每行日期、时间、诊室）转成 7 个日历事件，导入我的 Google 日历。请先判断需要什么样的控制架构，再给出设计。"
+  }
+ ]
+}

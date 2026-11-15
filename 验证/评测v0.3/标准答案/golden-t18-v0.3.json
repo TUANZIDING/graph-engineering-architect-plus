@@ -1,0 +1,4 @@
+{
+ "mode": "linear_workflow",
+ "rationale": "读表、转换、导入三步，无迭代反馈。"
+}

@@ -1,0 +1,7 @@
+00b71a69ae93c0f6e4c27a391cd514d74b36a639fe02fecf0adcc6403b6e2c5a  评测任务v0.3.json
+47bb40b1c3433b5754bd5034df6da0cd849bff6826a6fd69e95fefaea9e8fe91  评分器v0.3.py
+b2d2f88c85ad1235f1a4f86fa8118722e13e3f279ed37c8183a458d014eac618  派发模板v0.3.md
+cfe8c7184287faf1c2976feb53bb274405326a17f9b10134c4529393ad1c8e53  生成派发文本v0.3.py
+ef94f3178d6316d94e77b3cee69c20ef8d0af3650522787a51bdfc07a88f29ee  生成参照答案v0.3.py
+f155da34fbfc07d00660334c34144b4c394f04757443fa9d755bc82033cd18d8  ../../工具/graph-engineering-architect-plus/scripts/geaplus-v1.1.py
+9fc4c9a80bb35988c4ca2c319682f36e4409562a4b148db989e2e9be035d8fee  ../../工具/graph-engineering-architect-plus/scripts/geaplus-v1.2.py

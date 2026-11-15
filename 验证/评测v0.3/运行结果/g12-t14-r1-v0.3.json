@@ -1,0 +1,601 @@
+{
+ "schema_version": "1.2",
+ "title": "急诊脓毒症预警阈值调整：以护士误报反馈驱动、以真实结局与漏报硬上限约束的控制图",
+ "mode": "graph_plus_loop",
+ "state": "designed",
+ "root_goal": {
+  "statement": "在不增加漏报或延迟识别脓毒症的前提下，降低急诊脓毒症预警中不可行动（经结局裁定确属非脓毒症/无需处置）的报警负担，目标较基线减少约50%；Agent 每周只产出阈值调整提案，不直接改动线上阈值。",
+  "human_owner": "急诊科主任（临床负责人），会同急诊护士长与医院脓毒症质控小组；需求提出人 Bruce",
+  "observable_success": "连续≥8周、结局成熟后（≥72小时住院结局+30天死亡）统计：(1) 经医师盲法裁定的非可行动报警/100急诊就诊较冻结基线下降≥50%（不可达时以安全为先、接受较小降幅并由治理回路评估其他手段）；(2) 脓毒症敏感度不低于基线减2个百分点且漏报绝对数不超过预设硬上限；(3) 脓毒症患者报警到抗生素时间中位数不延长、ICU转入/30天死亡无统计学恶化；(4) 预设亚组（≥75岁、免疫抑制、低分诊等级、夜班）无亚组敏感度明显下降；(5) 每次阈值变更均有人工批准记录、静默期评估报告和可回滚版本。",
+  "out_of_scope": [
+   "Agent 直接写入或每周自动上调线上预警阈值（无人工批准的闭环调参）",
+   "仅以护士“误报”标签作为金标准或唯一优化目标",
+   "修改脓毒症定义、裁定标准、冻结基线阈值或漏报硬上限",
+   "改动预警模型本身的特征/权重（重训属于另一项需单独审批的工程，且若为受监管医疗器械须走厂商与法规流程）",
+   "据个别护士标记做绩效评价或追责"
+  ],
+  "metrics": [
+   "经裁定的非可行动报警/100就诊",
+   "脓毒症敏感度与漏报绝对数",
+   "报警到抗生素时间",
+   "ICU转入与30天死亡",
+   "亚组敏感度",
+   "护士误报标记率"
+  ],
+  "domain": [
+   "clinical_protocol",
+   "ml_model"
+  ]
+ },
+ "classification_rationale": "不是单回路：用户提出的“每周按护士误报标签自动调高阈值、目标误报减半”是典型的单指标闭环，会钻指标空子——阈值单向上调必然降低报警数，护士标签受报警疲劳影响且在结局出现前就打出，部分“误报”其实是早期脓毒症，代价（漏报、延迟抗生素、死亡）在该回路里不可见且滞后数天到30天。因此需要：独立于护士标签的真实结局锚点（盲法医师裁定+EHR硬结局，覆盖未报警患者）；以漏报硬上限为反指标、有否决和回滚权的安全回路；在时间上留出且结局成熟的数据+静默运行上独立验证候选阈值；月度审计标签质量与漂移；慢速治理回路审“减半”这个目标本身；以及临床信息系统变更的人工门。周度提案（快）与阈值生效（≥月度、需人工批准）必须分速，防止快回路搅动慢变量。",
+ "permissions": {
+  "human_owner": "急诊科主任",
+  "allowed_actions": [
+   "每周读取上周报警日志、护士标记及原因、已成熟的裁定结局（训练窗口）",
+   "生成阈值候选及其预期报警量/敏感度/亚组表现的提案文档",
+   "提出非阈值类手段建议（重复报警去重、再报警间隔、分级报警、护理流程）供治理回路评估",
+   "在漏报触发线被越过时，由安全回路请求按预案回滚到冻结基线阈值（回滚方向只能更保守）"
+  ],
+  "forbidden_actions": [
+   "直接写入或启用线上预警阈值",
+   "单次提案阈值变动超过治理批准的步长上限，或在上次变更后观察窗未满时再提新变更",
+   "读取或使用验证用的时间留出期数据与静默期数据",
+   "修改裁定标准、结局定义、冻结基线阈值、漏报硬上限或审批规则",
+   "以个人身份识别护士并评价其标记",
+   "向患者或临床团队直接发送通知"
+  ]
+ },
+ "frozen_rules": [
+  "冻结基线阈值与厂商/院内原始验证报告作为回滚目标，只有人工门可更换",
+  "脓毒症裁定标准（Sepsis-3 + 院内脓毒症诊疗规范版本）与盲法医师裁定流程冻结；裁定者看不到报警是否触发及护士标签",
+  "漏报硬上限与敏感度下限（基线减2个百分点）冻结，越过即否决变更并触发回滚",
+  "任何线上阈值变更需急诊科主任+护士长+信息科/临床决策支持变更委员会签字；同一变量两次变更间隔≥4周且须完成≥4周静默运行评估",
+  "单次阈值变动步长不超过治理回路批准的上限；只调阈值，不改模型",
+  "护士标签只作为“报警负担”信号和候选生成输入，不作为结局真值",
+  "两个锚点在首次被任何检查者使用前须由人工门签字确认并记录 last_confirmed；超过 max_age_days 即挡住验收直至复审"
+ ],
+ "approval": {
+  "status": "pending"
+ },
+ "budget": {
+  "max_agents": 6,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 20
+ },
+ "failure_policy": {
+  "failed": "候选未通过验证或安全否决：保持当前阈值，提案归档并附否决理由，下一周期按理由重做；连续3个候选失败则升级治理回路评估阈值以外的手段",
+  "blocked": "裁定结局未成熟、数据管道异常或静默运行未完成：不提交人工门，状态记为 blocked，由质控小组补数据",
+  "budget_exhausted": "达到迭代或成本上限：停止提案，把已有证据包交给急诊科主任，阈值维持现状",
+  "safety_breach": "上线后漏报越过硬上限或敏感度跌破下限：按预案立即回滚到冻结基线阈值，48小时内通知急诊科主任并启动病例复盘"
+ },
+ "stop_handoff": {
+  "owner": "急诊科主任",
+  "conditions": [
+   "completed：观察期满足全部 observable_success 且经人工签字",
+   "blocked：结局锚点或静默数据不可得",
+   "failed：安全回路否决并回滚，或连续3个候选未通过",
+   "budget_exhausted：迭代/成本上限用尽"
+  ],
+  "artifact": "handoff.md（当前生效阈值版本、变更与回滚记录、各指标时间序列、亚组表、未决问题）"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "governance": {
+  "arbitration": {
+   "owner": "医院脓毒症质控小组组长",
+   "priority_policy": "患者安全（漏报硬上限、敏感度下限、抗生素时间、死亡/ICU转入）> 亚组公平（任何预设亚组不得明显恶化）> 校准与结局锚定的预测性能 > 经裁定的非可行动报警下降 > 护士误报标记率与达成“减半”的速度"
+  },
+  "goal_change": "human_approval",
+  "approval_required": [
+   "根目标或“减半”目标修订",
+   "锚点、裁定标准或冻结基线更换",
+   "任何线上阈值变更",
+   "步长上限、漏报硬上限、敏感度下限变更",
+   "权限扩展（包括让 Agent 直接写阈值）"
+  ]
+ },
+ "verification": {
+  "independence_statement": "验证由医院数据分析/临床决策支持组完成，不由提案 Agent 完成；证据来源是提案 Agent 读不到的时间留出期（训练窗口之后、结局已成熟）的盲法裁定结局和≥4周静默运行（候选阈值后台计算、不触发报警）数据，评估者与数据来源均独立于执行者；安全回路另以 EHR 硬结局病例搜索覆盖未报警患者，不依赖报警系统或护士标签。",
+  "checks": [
+   {
+    "verifier_node": "verify_holdout_silent",
+    "check": "时间留出+静默运行下的敏感度、PPV、非可行动报警率、提前量、校准、预设亚组表现，任一不达标即否决"
+   }
+  ]
+ },
+ "external_inputs": [
+  "上周报警日志与护士误报标记及原因",
+  "EHR原始记录",
+  "院内脓毒症诊疗规范与Sepsis-3定义",
+  "冻结基线阈值与原始验证报告"
+ ],
+ "anchors": [
+  {
+   "node_id": "anchor_adjudicated_outcomes",
+   "source": "盲法医师病历裁定（Sepsis-3）+ EHR硬结局：血培养+抗生素、升压药、乳酸、ICU转入、30天死亡；覆盖报警与未报警急诊患者的分层抽样",
+   "evidence_form": "按就诊编号的裁定表（脓毒症是/否、发病时间、是否可行动）及硬结局抽取表，裁定者不知报警与护士标签",
+   "owner": "脓毒症质控小组裁定医师（与提案Agent、验证分析组均不同）",
+   "freshness_rule": "每周新增，仅使用结局成熟≥30天的就诊；裁定一致性（双人κ）每季度复核，κ<0.7暂停使用该批；last_confirmed 在上线前由人工门签字时首次记录（设计阶段尚无确认日期，故未填写，首次使用前必须由 gate_cds_change 确认）",
+   "frozen": true,
+   "max_age_days": 45,
+   "revalidation_gate": "gate_cds_change"
+  },
+  {
+   "node_id": "anchor_frozen_baseline",
+   "source": "冻结基线阈值、厂商/院内原始验证报告、上线前基线期的敏感度与漏报数、院内脓毒症诊疗规范版本",
+   "evidence_form": "带版本号与签字的基线文档及基线期指标表",
+   "owner": "急诊科主任与信息科临床决策支持负责人",
+   "freshness_rule": "每年由人工门复审一次，或指南/诊疗规范更新时立即复审；只有人工门可替换；last_confirmed 在上线前由人工门签字时首次记录（设计阶段尚无确认日期，故未填写，首次使用前必须由 gate_cds_change 确认）",
+   "frozen": true,
+   "max_age_days": 365,
+   "revalidation_gate": "gate_cds_change"
+  }
+ ],
+ "domain_audits": [
+  {
+   "concern": "guideline_currency",
+   "node_id": "audit_labels_drift"
+  },
+  {
+   "concern": "under_triage_safety",
+   "node_id": "counter_missed_sepsis"
+  },
+  {
+   "concern": "real_outcome_anchor",
+   "node_id": "anchor_adjudicated_outcomes"
+  },
+  {
+   "concern": "temporal_holdout",
+   "node_id": "verify_holdout_silent"
+  },
+  {
+   "concern": "calibration",
+   "node_id": "verify_holdout_silent"
+  },
+  {
+   "concern": "subgroup_performance",
+   "node_id": "verify_holdout_silent"
+  },
+  {
+   "concern": "drift",
+   "node_id": "audit_labels_drift"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "exec_threshold_proposer",
+   "kind": "execution_loop",
+   "responsibility": "每周读取上周报警、护士误报标记及原因与训练窗口内已成熟的裁定结局，生成一个阈值候选（遵守步长上限与观察窗），给出预期报警量、敏感度、亚组影响；同时列出阈值以外的降噪手段建议。只提案，不写线上配置。",
+   "owner": "提案Agent（由信息科托管）",
+   "cadence": "weekly",
+   "cadence_tier": "slow",
+   "max_iterations": 3,
+   "optimizes": "经裁定的非可行动报警/100就诊",
+   "side_effect": "none",
+   "evidence_sources": [
+    "报警日志与护士标记（训练窗口）",
+    "裁定结局（训练窗口）"
+   ],
+   "writes": [
+    "threshold-proposal-dossier"
+   ],
+   "contract": {
+    "inputs": [
+     "上周报警日志与护士误报标记及原因",
+     "裁定结局（训练窗口）",
+     "验证否决理由",
+     "审计约束"
+    ],
+    "outputs": [
+     "阈值候选提案包"
+    ]
+   }
+  },
+  {
+   "id": "anchor_adjudicated_outcomes",
+   "kind": "anchor",
+   "responsibility": "提供独立于报警系统与护士标签的真实结局：盲法医师裁定+EHR硬结局，覆盖未报警患者。",
+   "owner": "脓毒症质控小组裁定医师",
+   "cadence": "weekly",
+   "cadence_tier": "slow",
+   "contract": {
+    "inputs": [
+     "EHR原始记录"
+    ],
+    "outputs": [
+     "裁定结局表"
+    ]
+   }
+  },
+  {
+   "id": "anchor_frozen_baseline",
+   "kind": "anchor",
+   "responsibility": "冻结基线阈值、基线期性能与诊疗规范版本，作为比较基准与回滚目标。",
+   "owner": "急诊科主任与信息科临床决策支持负责人",
+   "cadence": "annual",
+   "cadence_tier": "governance",
+   "contract": {
+    "inputs": [
+     "冻结基线阈值与原始验证报告"
+    ],
+    "outputs": [
+     "基线文档与回滚目标"
+    ]
+   }
+  },
+  {
+   "id": "verify_holdout_silent",
+   "kind": "verification_loop",
+   "responsibility": "对每个候选：在训练窗口之后、结局成熟的时间留出期回放评估，再做≥4周静默运行；报告敏感度、PPV、非可行动报警率、报警提前量、校准（斜率/截距、Brier）与预设亚组，任一项低于冻结门槛即否决。",
+   "owner": "医院数据分析/临床决策支持组",
+   "cadence": "per candidate",
+   "cadence_tier": "medium",
+   "context_scope": "fresh-independent",
+   "max_iterations": 2,
+   "side_effect": "none",
+   "evidence_sources": [
+    "裁定结局（时间留出期）",
+    "静默运行日志"
+   ],
+   "contract": {
+    "inputs": [
+     "阈值候选提案包",
+     "裁定结局表",
+     "基线文档与回滚目标"
+    ],
+    "outputs": [
+     "候选验证报告（通过/否决+理由）"
+    ]
+   }
+  },
+  {
+   "id": "counter_missed_sepsis",
+   "kind": "counter_metric_loop",
+   "responsibility": "反指标与上线后安全监测：以EHR硬结局病例搜索（不依赖报警）统计漏报/延迟报警的脓毒症、报警到抗生素时间、ICU转入与死亡；对照漏报硬上限与敏感度下限，候选阶段可否决，上线后越线即要求回滚并升级。",
+   "owner": "急诊质控医师（患者安全）",
+   "cadence": "weekly",
+   "cadence_tier": "slow",
+   "max_iterations": 12,
+   "side_effect": "none",
+   "evidence_sources": [
+    "EHR硬结局病例搜索",
+    "裁定结局表"
+   ],
+   "contract": {
+    "inputs": [
+     "阈值候选提案包",
+     "裁定结局表",
+     "基线文档与回滚目标",
+     "已生效阈值版本"
+    ],
+    "outputs": [
+     "漏报安全报告",
+     "回滚请求"
+    ]
+   }
+  },
+  {
+   "id": "audit_labels_drift",
+   "kind": "audit_loop",
+   "responsibility": "月度审计：护士误报标签与裁定结局的一致率（多少“误报”实为脓毒症）、标签按班次/科室分布与报警疲劳迹象；病例构成与结局率漂移（季节性流感等）、数据管道与报警系统版本；诊疗规范/裁定标准是否过期。漂移或标签失真超阈值时约束提案回路暂停或降权使用标签。",
+   "owner": "护理质控与医务处联合审计",
+   "cadence": "monthly",
+   "cadence_tier": "slow",
+   "max_iterations": 12,
+   "side_effect": "none",
+   "evidence_sources": [
+    "护士标签抽样复核",
+    "裁定结局表",
+    "数据管道日志"
+   ],
+   "contract": {
+    "inputs": [
+     "上周报警日志与护士误报标记及原因",
+     "裁定结局表",
+     "基线文档与回滚目标"
+    ],
+    "outputs": [
+     "月度审计报告",
+     "提案约束（暂停/降权）"
+    ]
+   }
+  },
+  {
+   "id": "arbitrate_sepsis_qc",
+   "kind": "arbitration",
+   "responsibility": "验证、安全、审计结论冲突时按优先级裁决，形成给人工门的单一建议。",
+   "owner": "医院脓毒症质控小组组长",
+   "cadence": "monthly",
+   "cadence_tier": "slow",
+   "priority_policy": "患者安全 > 亚组公平 > 校准/结局锚定性能 > 非可行动报警下降 > 护士标记率与达标速度",
+   "contract": {
+    "inputs": [
+     "候选验证报告",
+     "漏报安全报告",
+     "月度审计报告"
+    ],
+    "outputs": [
+     "裁决建议"
+    ]
+   }
+  },
+  {
+   "id": "gate_cds_change",
+   "kind": "human_gate",
+   "responsibility": "急诊科主任+护士长+信息科临床决策支持变更委员会审批任何阈值变更、回滚后的恢复、锚点/硬上限/目标修订；确认观察窗与步长。",
+   "owner": "急诊科主任",
+   "cadence": "human, at most monthly",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "裁决建议",
+     "治理修订提案"
+    ],
+    "outputs": [
+     "签字变更单或驳回记录"
+    ]
+   }
+  },
+  {
+   "id": "exec_apply_threshold",
+   "kind": "execution",
+   "responsibility": "信息科按签字变更单在线上配置新阈值（带版本号与一键回滚），或按安全回路的回滚请求恢复冻结基线。",
+   "owner": "信息科临床决策支持工程师",
+   "cadence": "per approved change",
+   "cadence_tier": "medium",
+   "side_effect": "high-risk",
+   "writes": [
+    "live-alert-threshold"
+   ],
+   "contract": {
+    "inputs": [
+     "签字变更单",
+     "回滚请求"
+    ],
+    "outputs": [
+     "已生效阈值版本"
+    ]
+   }
+  },
+  {
+   "id": "gov_target_review",
+   "kind": "governance_loop",
+   "responsibility": "季度审视“误报减半”目标是否在安全下限内可达、是否应改用去重/分级/再报警间隔/流程改造等非阈值手段，以及步长上限与观察窗是否合适；只能向人工门提案。",
+   "owner": "医院医疗质量与患者安全委员会",
+   "cadence": "quarterly",
+   "cadence_tier": "governance",
+   "max_iterations": 4,
+   "contract": {
+    "inputs": [
+     "月度审计报告",
+     "漏报安全报告",
+     "裁决建议"
+    ],
+    "outputs": [
+     "治理修订提案"
+    ]
+   }
+  },
+  {
+   "id": "stop_handoff",
+   "kind": "stop_handoff",
+   "responsibility": "按 completed/blocked/failed/budget_exhausted 收尾，把当前阈值版本、变更与回滚记录和指标交给急诊科主任。",
+   "owner": "急诊科主任",
+   "cadence": "on stop",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "签字变更单或驳回记录",
+     "漏报安全报告",
+     "治理修订提案"
+    ],
+    "outputs": [
+     "handoff.md"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "anchor_adjudicated_outcomes",
+   "to": "exec_threshold_proposer",
+   "relation": "feeds",
+   "artifact": "裁定结局（训练窗口）"
+  },
+  {
+   "from": "anchor_adjudicated_outcomes",
+   "to": "verify_holdout_silent",
+   "relation": "anchors",
+   "artifact": "裁定结局表（时间留出期，提案Agent不可见）"
+  },
+  {
+   "from": "anchor_adjudicated_outcomes",
+   "to": "counter_missed_sepsis",
+   "relation": "anchors",
+   "artifact": "裁定结局表"
+  },
+  {
+   "from": "anchor_adjudicated_outcomes",
+   "to": "audit_labels_drift",
+   "relation": "anchors",
+   "artifact": "裁定结局表"
+  },
+  {
+   "from": "anchor_frozen_baseline",
+   "to": "verify_holdout_silent",
+   "relation": "anchors",
+   "artifact": "基线文档与回滚目标"
+  },
+  {
+   "from": "anchor_frozen_baseline",
+   "to": "counter_missed_sepsis",
+   "relation": "anchors",
+   "artifact": "基线文档与回滚目标（漏报硬上限、敏感度下限）"
+  },
+  {
+   "from": "anchor_frozen_baseline",
+   "to": "audit_labels_drift",
+   "relation": "anchors",
+   "artifact": "基线文档与回滚目标（诊疗规范版本）"
+  },
+  {
+   "from": "exec_threshold_proposer",
+   "to": "verify_holdout_silent",
+   "relation": "feeds",
+   "artifact": "阈值候选提案包"
+  },
+  {
+   "from": "exec_threshold_proposer",
+   "to": "counter_missed_sepsis",
+   "relation": "feeds",
+   "artifact": "阈值候选提案包"
+  },
+  {
+   "from": "verify_holdout_silent",
+   "to": "exec_threshold_proposer",
+   "relation": "constrains",
+   "artifact": "验证否决理由"
+  },
+  {
+   "from": "verify_holdout_silent",
+   "to": "gate_cds_change",
+   "relation": "vetoes",
+   "artifact": "候选验证报告（否决即不得提交变更）"
+  },
+  {
+   "from": "verify_holdout_silent",
+   "to": "arbitrate_sepsis_qc",
+   "relation": "escalates",
+   "artifact": "候选验证报告"
+  },
+  {
+   "from": "counter_missed_sepsis",
+   "to": "gate_cds_change",
+   "relation": "vetoes",
+   "artifact": "漏报安全报告（越线否决）"
+  },
+  {
+   "from": "counter_missed_sepsis",
+   "to": "exec_apply_threshold",
+   "relation": "constrains",
+   "artifact": "回滚请求（只能回到冻结基线）"
+  },
+  {
+   "from": "counter_missed_sepsis",
+   "to": "arbitrate_sepsis_qc",
+   "relation": "escalates",
+   "artifact": "漏报安全报告"
+  },
+  {
+   "from": "counter_missed_sepsis",
+   "to": "stop_handoff",
+   "relation": "escalates",
+   "artifact": "漏报安全报告（安全事件收尾）"
+  },
+  {
+   "from": "audit_labels_drift",
+   "to": "exec_threshold_proposer",
+   "relation": "constrains",
+   "artifact": "审计约束（暂停/降权使用护士标签）"
+  },
+  {
+   "from": "audit_labels_drift",
+   "to": "arbitrate_sepsis_qc",
+   "relation": "escalates",
+   "artifact": "月度审计报告"
+  },
+  {
+   "from": "audit_labels_drift",
+   "to": "gov_target_review",
+   "relation": "feeds",
+   "artifact": "月度审计报告"
+  },
+  {
+   "from": "counter_missed_sepsis",
+   "to": "gov_target_review",
+   "relation": "feeds",
+   "artifact": "漏报安全报告"
+  },
+  {
+   "from": "arbitrate_sepsis_qc",
+   "to": "gate_cds_change",
+   "relation": "arbitrates",
+   "artifact": "裁决建议"
+  },
+  {
+   "from": "arbitrate_sepsis_qc",
+   "to": "gov_target_review",
+   "relation": "feeds",
+   "artifact": "裁决建议"
+  },
+  {
+   "from": "gov_target_review",
+   "to": "gate_cds_change",
+   "relation": "escalates",
+   "artifact": "治理修订提案"
+  },
+  {
+   "from": "gov_target_review",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "治理修订提案"
+  },
+  {
+   "from": "gate_cds_change",
+   "to": "exec_apply_threshold",
+   "relation": "constrains",
+   "artifact": "签字变更单"
+  },
+  {
+   "from": "gate_cds_change",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "签字变更单或驳回记录"
+  },
+  {
+   "from": "exec_apply_threshold",
+   "to": "counter_missed_sepsis",
+   "relation": "observes",
+   "artifact": "已生效阈值版本"
+  },
+  {
+   "from": "exec_threshold_proposer",
+   "to": "stop_handoff",
+   "relation": "escalates",
+   "artifact": "阈值候选提案包（预算用尽/连续失败时）"
+  },
+  {
+   "from": "arbitrate_sepsis_qc",
+   "to": "exec_threshold_proposer",
+   "relation": "arbitrates",
+   "artifact": "裁决建议（验证否决与审计约束冲突时以安全优先的单一指令）"
+  },
+  {
+   "from": "gate_cds_change",
+   "to": "verify_holdout_silent",
+   "relation": "constrains",
+   "artifact": "锚点确认签字（未确认或过期时禁止据此验收）"
+  },
+  {
+   "from": "gate_cds_change",
+   "to": "counter_missed_sepsis",
+   "relation": "constrains",
+   "artifact": "锚点确认签字（未确认或过期时禁止据此验收）"
+  },
+  {
+   "from": "gate_cds_change",
+   "to": "audit_labels_drift",
+   "relation": "constrains",
+   "artifact": "锚点确认签字（未确认或过期时禁止据此验收）"
+  }
+ ],
+ "notes_for_bruce": [
+  "核心改动：不让Agent每周自动调高阈值。Agent每周只出提案；阈值生效需静默运行≥4周+留出期结局验证+人工签字，变更频率≤每月一次，步长受限。",
+  "护士“误报”标签在结局出现前打出、受报警疲劳影响，只能当负担信号；真值来自盲法裁定和未报警患者的硬结局搜索，否则漏报永远看不见。",
+  "“减半”是治理目标而不是硬约束：漏报硬上限和敏感度下限优先；单靠调阈值达不到时，优先考虑重复报警去重、分级报警、再报警间隔与流程改造。",
+  "若该预警为厂商受监管软件，阈值修改可能需要厂商与法规流程，需信息科确认（未核实）。",
+  "自查：validate 通过；diagnose 仅剩两锚点缺 last_confirmed 的提醒——设计阶段没有真实确认日期，故意不填，首次使用前由人工门签字记录。"
+ ]
+}

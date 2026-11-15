@@ -1,0 +1,42 @@
+{
+ "schema_version": "1.1",
+ "title": "证据表自动合并",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "证据表每日更新",
+  "human_owner": "Bruce",
+  "observable_success": "新条目字段齐全并合并"
+ },
+ "nodes": [
+  {
+   "id": "a",
+   "kind": "execution_loop",
+   "responsibility": "检索并添加条目",
+   "optimizes": "entries"
+  },
+  {
+   "id": "b",
+   "kind": "verification_loop",
+   "responsibility": "检查字段格式齐全"
+  },
+  {
+   "id": "pub",
+   "kind": "execution",
+   "responsibility": "自动更新结论与网站"
+  }
+ ],
+ "edges": [
+  {
+   "from": "a",
+   "to": "b",
+   "relation": "feeds",
+   "artifact": "entries"
+  },
+  {
+   "from": "b",
+   "to": "pub",
+   "relation": "feeds",
+   "artifact": "merged"
+  }
+ ]
+}

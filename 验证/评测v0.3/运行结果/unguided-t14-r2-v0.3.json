@@ -1,0 +1,492 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊脓毒症预警阈值每周调整的控制架构（Agent 只提议、人审批、反向指标守门）",
+  "mode": "graph_plus_loop",
+  "rationale": "原请求是让Agent依据护士标记的'误报'单向调高阈值、只优化误报数，这是典型的Goodhart/目标错位：阈值上调必然以漏报真实脓毒症为代价，且'误报'标签来自被报警打扰的护士本人（有偏、非金标准），若同一标签既用于调参又用于评价，形成循环自证。阈值是临床安全参数，改动属高风险、影响患者，不能由Agent自动生效。因此需要：每周分析/提议的执行loop + 独立于护士标签的金标准锚点（Sepsis-3回顾性病历判定、结局数据）+ 敏感度/漏报反向指标loop + 独立验证 + 临床质量委员会人工门 + 回退与停止交接，故选 graph_plus_loop，而非 loop。真实目标改写为：在敏感度不低于基线、漏报不增加的前提下降低误报（降一半是期望值而非硬约束）。",
+  "state": "design",
+  "root_goal": {
+    "statement": "在不降低脓毒症检出敏感度、不增加漏报和延迟识别的前提下，降低急诊脓毒症预警的误报与报警疲劳；误报减半是期望目标，不以安全为代价达成。",
+    "human_owner": "Bruce（急诊科；阈值最终由急诊医疗质量/患者安全委员会批准）",
+    "observable_success": "连续4周：经独立病历复核的阳性预测值上升、误报/每100就诊下降（目标-50%），同时敏感度不低于基线95%置信下限、漏报病例数不增加、报警到抗生素时间不延长；每次阈值变更均有审批记录且可回退。",
+    "metrics": [
+      "confirmed_false_alarm_rate",
+      "sensitivity_sepsis3",
+      "missed_sepsis_count",
+      "ppv",
+      "time_to_antibiotics",
+      "alarm_burden_per_nurse_shift"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取去标识化的报警日志与护士标记",
+      "读取去标识化的病历结局数据用于回顾性分析",
+      "生成阈值候选与回顾性模拟报告",
+      "起草变更申请交人工审批",
+      "在审批后的沙箱/影子模式中运行候选阈值"
+    ],
+    "forbidden_actions": [
+      "自动修改生产环境预警阈值",
+      "仅依据护士误报标记直接调参",
+      "单周调整幅度超过委员会预设步长",
+      "为达成误报减半而接受敏感度下降",
+      "导出可识别患者身份的数据",
+      "修改敏感度基线或金标准定义"
+    ]
+  },
+  "frozen_rules": [
+    "真实目标是降低误报且不降低敏感度；'误报减半'不得压过安全约束。",
+    "护士'误报'标记只作信号，不作金标准；评价必须用独立的Sepsis-3回顾性病历判定与结局数据。",
+    "任何阈值变更必须经急诊质量/患者安全委员会人工批准，Agent不得直接写入生产系统。",
+    "敏感度跌破基线95%CI下限或出现任一漏报致严重不良结局，立即停止并回退至上一获批阈值。",
+    "每次变更单步幅度受限，先影子模式运行至少1周再上线。",
+    "调参与评价使用不同数据：调参用第N周，评价用之后的独立时段/保留样本。",
+    "若预警系统为厂商医疗器械软件，阈值修改须符合厂商与院内变更控制流程。"
+  ],
+  "approval": {
+    "status": "pending",
+    "note": "需Bruce及急诊医疗质量/患者安全委员会审核本架构后方可运行"
+  },
+  "budget": {
+    "max_agents": 5,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": "任何节点失败或证据不足时不提出变更，维持当前获批阈值；验证或反向指标不通过则否决提议；安全红线触发即回退并交接给人。",
+  "stop_handoff": {
+    "owner": "Bruce + 急诊医疗质量/患者安全委员会",
+    "conditions": [
+      "敏感度低于基线95%CI下限",
+      "任一因延迟识别导致的严重不良事件",
+      "金标准复核样本不足以判断",
+      "护士标记与病历复核一致率过低（标签不可信）",
+      "连续2次提议被否决",
+      "预算或迭代上限用尽",
+      "阈值已接近委员会设定的上限"
+    ],
+    "artifact": "停止交接报告：当前阈值、历次变更与回退记录、误报/敏感度/漏报趋势、未决问题与建议"
+  },
+  "execution_contract": {
+    "external_execution": false,
+    "note": "Agent不直接改生产系统；实际阈值写入由信息科在审批后人工执行"
+  },
+  "external_inputs": [
+    "weekly_alarm_log",
+    "nurse_false_alarm_labels",
+    "ehr_outcome_data",
+    "baseline_performance",
+    "committee_threshold_policy"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_gold_standard",
+      "source": "每周随机抽样+全部被抑制报警的去标识病历，由不参与调参的两名医师按Sepsis-3独立回顾判定（分歧由第三人裁定）",
+      "evidence_form": "逐例判定表与一致性统计（kappa）",
+      "owner": "急诊科质控医师组",
+      "freshness_rule": "每周更新，评价只用当周或之后的判定",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_baseline",
+      "source": "上线前/变更前一段时期的系统基线性能（敏感度、PPV、误报率）及委员会批准的安全阈值区间",
+      "evidence_form": "冻结的基线报告与委员会纪要",
+      "owner": "急诊医疗质量/患者安全委员会",
+      "freshness_rule": "冻结，仅委员会可更新",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_gold_standard",
+      "kind": "anchor",
+      "responsibility": "提供独立于护士标记的真阳/假阳/漏报判定",
+      "owner": "急诊科质控医师组",
+      "contract": {
+        "inputs": [
+          "weekly_alarm_log",
+          "ehr_outcome_data"
+        ],
+        "outputs": [
+          "gold_labels"
+        ]
+      },
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "ehr_outcome_data"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "anchor_baseline",
+      "kind": "anchor",
+      "responsibility": "冻结基线性能与允许的阈值区间、单步步长",
+      "owner": "急诊医疗质量/患者安全委员会",
+      "contract": {
+        "inputs": [
+          "baseline_performance",
+          "committee_threshold_policy"
+        ],
+        "outputs": [
+          "frozen_baseline",
+          "threshold_bounds"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "weekly_analysis_loop",
+      "kind": "execution_loop",
+      "responsibility": "每周汇总报警与护士标记，分析误报来源（哪些亚组/指标驱动），在阈值区间内做回顾性模拟，生成1-3个候选（含不改阈值、仅改报警呈现/分层等非阈值方案）",
+      "owner": "分析Agent",
+      "contract": {
+        "inputs": [
+          "weekly_alarm_log",
+          "nurse_false_alarm_labels",
+          "threshold_bounds"
+        ],
+        "outputs": [
+          "candidate_thresholds",
+          "simulation_report"
+        ]
+      },
+      "max_iterations": 3,
+      "evidence_sources": [
+        "weekly_alarm_log",
+        "nurse_false_alarm_labels"
+      ],
+      "optimizes": "confirmed_false_alarm_rate",
+      "side_effect": "none",
+      "writes": [
+        "candidate_store"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "label_audit_loop",
+      "kind": "audit_loop",
+      "responsibility": "比对护士误报标记与金标准判定的一致性，识别标签偏倚（如真脓毒症被标误报）",
+      "owner": "审计Agent",
+      "contract": {
+        "inputs": [
+          "nurse_false_alarm_labels",
+          "gold_labels"
+        ],
+        "outputs": [
+          "label_reliability_report"
+        ]
+      },
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "gold_labels",
+        "nurse_false_alarm_labels"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "safety_counter_loop",
+      "kind": "counter_metric_loop",
+      "responsibility": "用金标准在独立保留样本上评估各候选的敏感度、漏报数、到抗生素时间，与冻结基线比较，越线即否决",
+      "owner": "安全评估Agent",
+      "contract": {
+        "inputs": [
+          "candidate_thresholds",
+          "gold_labels",
+          "frozen_baseline"
+        ],
+        "outputs": [
+          "safety_verdict"
+        ]
+      },
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "gold_labels",
+        "ehr_outcome_data"
+      ],
+      "optimizes": "sensitivity_sepsis3",
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "independent_verifier",
+      "kind": "verification_loop",
+      "responsibility": "不看分析Agent推理，独立复算候选的误报率与PPV，检查数据泄漏（调参与评价是否同一数据）及步长合规",
+      "owner": "验证Agent",
+      "contract": {
+        "inputs": [
+          "candidate_thresholds",
+          "simulation_report",
+          "gold_labels",
+          "threshold_bounds"
+        ],
+        "outputs": [
+          "verification_report"
+        ]
+      },
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "gold_labels"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "proposal_synthesis",
+      "kind": "synthesis",
+      "responsibility": "汇总候选、验证、安全与标签审计，形成变更申请（或建议不变/回退），写明误报与敏感度的权衡",
+      "owner": "汇总Agent",
+      "contract": {
+        "inputs": [
+          "candidate_thresholds",
+          "verification_report",
+          "safety_verdict",
+          "label_reliability_report"
+        ],
+        "outputs": [
+          "change_request"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "change_request_store"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "committee_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce与委员会审批：批准进入影子模式/上线、要求修改或否决",
+      "owner": "Bruce + 急诊医疗质量/患者安全委员会",
+      "contract": {
+        "inputs": [
+          "change_request"
+        ],
+        "outputs": [
+          "approval_decision"
+        ]
+      },
+      "side_effect": "high-risk",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "shadow_and_deploy",
+      "kind": "execution",
+      "responsibility": "审批后由信息科先影子模式运行≥1周，再人工写入生产；保留上一阈值以便一键回退",
+      "owner": "信息科（人工执行）",
+      "contract": {
+        "inputs": [
+          "approval_decision"
+        ],
+        "outputs": [
+          "deployed_threshold",
+          "shadow_results"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "production_threshold"
+      ],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "post_change_monitor",
+      "kind": "governance_loop",
+      "responsibility": "上线后每周监测误报、敏感度、漏报和不良事件，触发红线即回退并交接",
+      "owner": "安全评估Agent + Bruce",
+      "contract": {
+        "inputs": [
+          "deployed_threshold",
+          "gold_labels",
+          "frozen_baseline"
+        ],
+        "outputs": [
+          "monitor_report",
+          "rollback_signal"
+        ]
+      },
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "gold_labels",
+        "ehr_outcome_data"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时冻结调参、回退至上一获批阈值并交接报告",
+      "owner": "Bruce + 委员会",
+      "contract": {
+        "inputs": [
+          "rollback_signal",
+          "safety_verdict",
+          "label_reliability_report"
+        ],
+        "outputs": [
+          "handoff_report"
+        ]
+      },
+      "side_effect": "internal-reversible",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {
+      "from": "anchor_baseline",
+      "to": "weekly_analysis_loop",
+      "relation": "constrains",
+      "artifact": "threshold_bounds"
+    },
+    {
+      "from": "anchor_baseline",
+      "to": "independent_verifier",
+      "relation": "constrains",
+      "artifact": "threshold_bounds"
+    },
+    {
+      "from": "anchor_gold_standard",
+      "to": "label_audit_loop",
+      "relation": "anchors",
+      "artifact": "gold_labels"
+    },
+    {
+      "from": "anchor_gold_standard",
+      "to": "safety_counter_loop",
+      "relation": "anchors",
+      "artifact": "gold_labels"
+    },
+    {
+      "from": "anchor_gold_standard",
+      "to": "independent_verifier",
+      "relation": "anchors",
+      "artifact": "gold_labels"
+    },
+    {
+      "from": "anchor_gold_standard",
+      "to": "post_change_monitor",
+      "relation": "anchors",
+      "artifact": "gold_labels"
+    },
+    {
+      "from": "anchor_baseline",
+      "to": "safety_counter_loop",
+      "relation": "anchors",
+      "artifact": "frozen_baseline"
+    },
+    {
+      "from": "anchor_baseline",
+      "to": "post_change_monitor",
+      "relation": "anchors",
+      "artifact": "frozen_baseline"
+    },
+    {
+      "from": "weekly_analysis_loop",
+      "to": "independent_verifier",
+      "relation": "feeds",
+      "artifact": "candidate_thresholds+simulation_report"
+    },
+    {
+      "from": "weekly_analysis_loop",
+      "to": "safety_counter_loop",
+      "relation": "feeds",
+      "artifact": "candidate_thresholds"
+    },
+    {
+      "from": "weekly_analysis_loop",
+      "to": "proposal_synthesis",
+      "relation": "feeds",
+      "artifact": "candidate_thresholds"
+    },
+    {
+      "from": "independent_verifier",
+      "to": "proposal_synthesis",
+      "relation": "verifies",
+      "artifact": "verification_report"
+    },
+    {
+      "from": "safety_counter_loop",
+      "to": "proposal_synthesis",
+      "relation": "vetoes",
+      "artifact": "safety_verdict"
+    },
+    {
+      "from": "label_audit_loop",
+      "to": "proposal_synthesis",
+      "relation": "constrains",
+      "artifact": "label_reliability_report"
+    },
+    {
+      "from": "label_audit_loop",
+      "to": "weekly_analysis_loop",
+      "relation": "revises",
+      "artifact": "label_reliability_report"
+    },
+    {
+      "from": "safety_counter_loop",
+      "to": "weekly_analysis_loop",
+      "relation": "revises",
+      "artifact": "safety_verdict"
+    },
+    {
+      "from": "proposal_synthesis",
+      "to": "committee_gate",
+      "relation": "escalates",
+      "artifact": "change_request"
+    },
+    {
+      "from": "committee_gate",
+      "to": "shadow_and_deploy",
+      "relation": "feeds",
+      "artifact": "approval_decision"
+    },
+    {
+      "from": "shadow_and_deploy",
+      "to": "post_change_monitor",
+      "relation": "feeds",
+      "artifact": "deployed_threshold"
+    },
+    {
+      "from": "post_change_monitor",
+      "to": "weekly_analysis_loop",
+      "relation": "observes",
+      "artifact": "monitor_report"
+    },
+    {
+      "from": "post_change_monitor",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "rollback_signal"
+    },
+    {
+      "from": "safety_counter_loop",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "safety_verdict"
+    },
+    {
+      "from": "label_audit_loop",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "label_reliability_report"
+    }
+  ],
+  "created": "2026-11-15",
+  "design_notes": [
+    "反向指标配对：weekly_analysis_loop优化confirmed_false_alarm_rate，safety_counter_loop优化sensitivity_sepsis3并有否决权。",
+    "证据独立：调参读护士标记，评价读医师金标准与结局，避免循环自证。",
+    "先考虑非阈值方案（报警分层、去重、静默窗口、组合规则），它们可能在不损失敏感度下减少误报。"
+  ]
+}

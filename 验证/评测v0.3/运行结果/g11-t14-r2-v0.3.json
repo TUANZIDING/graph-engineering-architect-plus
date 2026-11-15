@@ -1,0 +1,576 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊脓毒症预警：受治理的误报削减回路图",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "created": "2026-11-15",
+  "requested_by": "Bruce",
+  "design_verdict": "不按原需求实现“Agent 每周按护士误报标记自动调高阈值”。改为：Agent 每周只产出阈值/规则调整【提议】，经独立的留出期回顾验证 + 影子模式 + 安全反指标 + 人工委员会批准后才上线，且全程不得低于冻结的敏感度底线；误报减半是受安全底线约束的目标，不是必须达成的硬指标。",
+  "why_not_as_requested": [
+    "护士“误报”标记是报警当下的主观判断，脓毒症常在数小时到数天后才确诊；把它当真值单向调高阈值，会系统性地漏掉早期/不典型脓毒症（指标被刷：误报降了，漏诊升了，而漏诊在原回路里看不见）。",
+    "只调高、不调低的周度棘轮没有反向力量；每周病例数少，一周数据不足以区分真实改善与随机波动（快回路搅动慢变量）。",
+    "阈值变化同时改变护士下周会看到和标记的报警，标记数据本身被优化动作污染（共享来源循环互证）。",
+    "预警阈值是临床决策支持的安全参数，直接上线属高风险副作用，须人工门与变更控制；若为商业/注册产品，本地改阈值还可能受厂商与监管约束。"
+  ],
+  "root_goal": {
+    "statement": "在不降低脓毒症早期识别能力（敏感度、漏诊、抗生素时间）的前提下，减少急诊脓毒症预警中无临床行动价值的报警，缓解护士报警疲劳。",
+    "human_owner": "Bruce（临床负责人）会同急诊脓毒症质量委员会（急诊科主任、护理部、医务/质控科、信息科）",
+    "observable_success": "相对上线前基线（同季节、同口径），经盲法病历复核判定的非行动性报警/每100急诊就诊下降，目标为减半；同时：经复核确认的脓毒症病例敏感度不低于冻结底线（基线减去委员会预设非劣效界值，建议≤5个百分点）、漏诊脓毒症例数与入院到抗生素时间无恶化、各预设亚组（≥75岁、免疫抑制、无发热表现）敏感度无显著下降；由委员会在≥8周影子+上线观察后签字确认。",
+    "out_of_scope": [
+      "Agent 自动修改生产环境阈值或报警逻辑",
+      "修改脓毒症诊断标准（Sepsis-3）、病历复核方案或敏感度底线",
+      "修改或删除护士的报警标记、绩效考核护士",
+      "对个体患者给出诊疗建议或替代医生判断",
+      "改动厂商模型内部权重（若为商业产品）"
+    ],
+    "metrics": [
+      "non_actionable_alerts_per_100_ed_visits",
+      "adjudicated_sepsis_sensitivity",
+      "missed_sepsis_cases",
+      "door_to_antibiotic_time",
+      "subgroup_sensitivity"
+    ]
+  },
+  "classification_rationale": "单回路不够：被优化的代理指标（护士标记误报）本身噪声大、滞后于真实结局，且会被优化动作反向污染；必须有独立于护士标记的结局锚点（盲法病历复核+结局登记）、一个专盯漏诊的反指标回路、一个审计标记质量与数据漂移的慢回路、一个能修订目标的治理回路，以及高风险上线前的人工门。这些回路节奏不同（周提议、按候选验证、月审计、季治理）且会冲突（降误报 vs 保敏感度），需要显式仲裁，因此是 graph_plus_loop：图负责约束与治理，提议节点内部是有界的分析回路。",
+  "permissions": {
+    "human_owner": "Bruce 与急诊脓毒症质量委员会",
+    "allowed_actions": [
+      "读取脱敏的报警日志、生命体征/化验特征与护士标记（训练窗口）",
+      "读取训练窗口内的盲法复核结局",
+      "离线回顾性模拟候选阈值、重复报警抑制、分级报警等方案",
+      "撰写调整提议与模拟报告",
+      "反指标回路在触发预批准安全条件时执行“回滚到上一已批准配置”"
+    ],
+    "forbidden_actions": [
+      "直接修改生产环境预警阈值或规则",
+      "读取验证留出期的复核结局",
+      "修改、补写或删除护士标记与复核结果",
+      "修改敏感度底线、亚组清单、复核方案、50%目标",
+      "对任何亚组单独关闭或放宽报警而未经批准",
+      "一次上线多个改动",
+      "把数据传出医院内网或使用可识别患者身份的信息"
+    ]
+  },
+  "frozen_rules": [
+    "安全优先：任何候选方案在留出期经复核的脓毒症敏感度不得低于冻结底线，预设亚组同样适用；不满足即否决，不因误报下降幅度而豁免。",
+    "护士“误报”标记只作为提示性信号，不作为真值；真值来自盲法病历复核（Sepsis-3）与独立结局登记。",
+    "阈值可双向调整；单次调整幅度有上限（建议≤1个评分单位或报警量变化≤15%），每个观察窗内最多一项改动。",
+    "每项改动先影子模式（计算但不推送）≥4周，再小范围上线；判断改动效果须累积≥30例复核确认的脓毒症或≥8周，以先到者为准但不少于4周。",
+    "生产配置变更只能经人工门批准、信息科变更控制执行，并保留一键回滚到上一已批准配置。",
+    "提议 Agent 无权修改验证者、反指标、审计口径、锚点或治理目标；只能提议，经人工门应用。",
+    "若系统为商业/注册医疗器械产品，阈值修改须先确认厂商允许的本地可配置范围与合规要求。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 3,
+    "max_retries": 1,
+    "max_cost_units": 20
+  },
+  "failure_policy": {
+    "failed": "候选方案未过验证或反指标：不上线，保留现行配置，将否决原因写入下一周提议的约束。",
+    "blocked": "锚点（盲法复核基线）未建立或过期、留出期复核病例不足、厂商不允许本地配置：停在设计/提议状态，升级给委员会，不得以护士标记替代真值。",
+    "budget_exhausted": "单周期内3轮分析仍无同时满足安全底线与减负的候选：报告“当前数据下无安全的阈值上调空间”，转交委员会考虑非阈值手段（重复报警抑制、分级推送、护理流程改进）。",
+    "safety_breach": "上线后反指标触发（漏诊病例、亚组敏感度跌破底线、抗生素时间恶化）：立即自动回滚到上一已批准配置，24小时内通知 Bruce 与委员会并启动个案复盘。"
+  },
+  "stop_handoff": {
+    "owner": "Bruce（会同急诊脓毒症质量委员会）",
+    "conditions": [
+      "completed：委员会依据锚点证据签字确认根结果达成并转入常规季度监测",
+      "blocked：真值锚点缺失/过期或厂商/合规不允许修改",
+      "failed：安全回滚发生且复盘认定方案路径不可行",
+      "budget_exhausted：连续3个提议周期无安全候选",
+      "stalled：连续8周无可评估的新复核数据"
+    ],
+    "artifact": "handoff.md（现行配置版本、基线与最新指标、未决冲突、回滚记录、下一步建议）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "急诊脓毒症质量委员会主席（急诊科主任），Bruce 为临床负责人",
+      "priority_policy": "患者安全（漏诊、敏感度底线、亚组）> 测量有效性（标记质量、复核真值、数据漂移）> 报警负担下降 > 达成50%目标的速度"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change（含50%目标与敏感度底线）",
+      "Anchor change（复核方案、结局登记口径）",
+      "Permission expansion",
+      "任何生产阈值/规则变更",
+      "冻结规则修改"
+    ]
+  },
+  "verification": {
+    "independence_statement": "验证者与提议 Agent 不同 owner（信息科临床数据组 vs Agent 运维方），上下文全新；数据来源不同：验证只用提议 Agent 看不到的时间留出期的盲法复核结局与独立结局登记，以及影子模式日志；复核医生对报警状态与阈值方案盲法。护士标记不作为验证真值。",
+    "checks": [
+      {
+        "verifier_node": "V1_independent_validation",
+        "criterion": "留出期复核敏感度≥冻结底线（总体与每个预设亚组），非行动性报警率下降，提前预警时间不缩短",
+        "evidence": "留出期盲法复核结局 + 结局登记 + ≥4周影子模式日志上的计算结果，含置信区间",
+        "failure_signal": "任一敏感度点估计或置信下限跌破底线、亚组病例过少无法评估、影子模式与回顾模拟结果不一致"
+      }
+    ]
+  },
+  "external_inputs": [
+    "alarm_log",
+    "nurse_false_alarm_labels",
+    "ehr_features",
+    "current_threshold_config"
+  ],
+  "anchors": [
+    {
+      "node_id": "A1_blinded_chart_adjudication",
+      "source": "盲法病历复核：两名不参与提议的急诊/重症医生按 Sepsis-3 对全部疑似脓毒症病例与随机抽样报警进行判定，分歧由第三人裁定",
+      "evidence_form": "按就诊编号的复核结局表（是否脓毒症、确诊时间、报警是否有行动价值），带复核者与日期",
+      "owner": "医务/质控科病历复核小组",
+      "freshness_rule": "每月补充复核；基线须覆盖上线前≥3个月；复核方案冻结，改动需委员会批准",
+      "frozen": true,
+      "max_age_days": 35,
+      "last_confirmed_status": "尚未建立：首次盲法复核/结局导出完成并经 owner 确认当日写入 last_confirmed（YYYY-MM-DD）；在此之前 V1/C1 视为 blocked，不得用护士标记替代"
+    },
+    {
+      "node_id": "A2_outcome_registry",
+      "source": "独立于报警系统的结局登记：出院诊断编码中的脓毒症、48小时内转ICU、血培养+抗生素启动、28天死亡",
+      "evidence_form": "每周从病案/HIS导出的结局清单（由病案科生成，Agent 只读）",
+      "owner": "病案科/信息科",
+      "freshness_rule": "每周更新，出院编码有约30天滞后，评估时只用编码已完成的就诊",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed_status": "尚未建立：首次盲法复核/结局导出完成并经 owner 确认当日写入 last_confirmed（YYYY-MM-DD）；在此之前 V1/C1 视为 blocked，不得用护士标记替代"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "A1_blinded_chart_adjudication",
+      "kind": "anchor",
+      "responsibility": "提供不依赖护士标记与阈值方案的真值：脓毒症是否存在、报警是否有行动价值",
+      "owner": "医务/质控科病历复核小组",
+      "cadence": "每月",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "复核方案（冻结）"
+        ],
+        "outputs": [
+          "adjudicated_outcomes_training_window",
+          "adjudicated_outcomes_holdout_window"
+        ]
+      }
+    },
+    {
+      "id": "A2_outcome_registry",
+      "kind": "anchor",
+      "responsibility": "提供独立的结局登记，用于发现报警系统完全没报的漏诊病例",
+      "owner": "病案科/信息科",
+      "cadence": "每周",
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "病案编码"
+        ],
+        "outputs": [
+          "outcome_registry"
+        ]
+      }
+    },
+    {
+      "id": "E1_threshold_proposal_agent",
+      "kind": "execution_loop",
+      "responsibility": "每周分析报警、护士标记与训练窗口复核结局，回顾模拟候选方案（阈值双向微调、重复报警抑制、分级推送），输出最多1项调整提议与预测的敏感度/误报变化；无生产写权限",
+      "owner": "Agent 运维方（Bruce 指定的数据分析人员）",
+      "cadence": "每周",
+      "cadence_tier": "fast",
+      "max_iterations": 3,
+      "optimizes": "non_actionable_alerts_per_100_ed_visits",
+      "context_scope": "persistent-project",
+      "evidence_sources": [
+        "alarm_log",
+        "nurse_false_alarm_labels",
+        "adjudicated_outcomes_training_window"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "proposal_dossier"
+      ],
+      "contract": {
+        "inputs": [
+          "alarm_log",
+          "nurse_false_alarm_labels",
+          "adjudicated_outcomes_training_window",
+          "label_quality_verdict",
+          "current_target_and_bounds"
+        ],
+        "outputs": [
+          "proposal_dossier（候选方案、回顾模拟、预测敏感度与误报变化、不确定性）"
+        ]
+      }
+    },
+    {
+      "id": "V1_independent_validation",
+      "kind": "verification_loop",
+      "responsibility": "在提议 Agent 看不到的时间留出期与影子模式数据上独立复算候选方案，按冻结底线判过/不过",
+      "owner": "信息科临床数据组（与提议方不同人）",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "adjudicated_outcomes_holdout_window",
+        "outcome_registry",
+        "shadow_mode_log"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "validation_report"
+      ],
+      "contract": {
+        "inputs": [
+          "proposal_dossier",
+          "adjudicated_outcomes_holdout_window",
+          "outcome_registry"
+        ],
+        "outputs": [
+          "validation_report（过/不过、总体与亚组敏感度及置信区间、误报变化）"
+        ]
+      }
+    },
+    {
+      "id": "C1_safety_counter_metrics",
+      "kind": "counter_metric_loop",
+      "responsibility": "专盯“便宜的胜利”：漏诊脓毒症（无报警或报警晚于临床决策）、亚组敏感度、入院到抗生素时间、48小时转ICU与28天死亡；对提议做事前预测检查，对上线配置做每周实盘监测，触发预批准条件时执行回滚",
+      "owner": "急诊科质控护士长 + 一名急诊主治（非提议方）",
+      "cadence": "每周",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "outcome_registry",
+        "adjudicated_outcomes_holdout_window",
+        "live_alert_log"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "safety_report",
+        "rollback_order"
+      ],
+      "contract": {
+        "inputs": [
+          "proposal_dossier",
+          "outcome_registry",
+          "live_deployment_log"
+        ],
+        "outputs": [
+          "safety_report",
+          "rollback_order（仅回滚到上一已批准配置）"
+        ]
+      }
+    },
+    {
+      "id": "AU1_label_and_measurement_audit",
+      "kind": "audit_loop",
+      "responsibility": "每月审计护士标记与复核真值的一致性（kappa、按班次/人员/季节的标记率）、报警疲劳导致的不评估即标记、数据管道与病例构成漂移（如流感季）；判定哪些标记可用、是否冻结提议",
+      "owner": "护理部质控 + 医务科（非提议方）",
+      "cadence": "每月",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "nurse_false_alarm_labels",
+        "adjudicated_outcomes_training_window",
+        "pipeline_metadata"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "label_quality_verdict",
+        "drift_report"
+      ],
+      "contract": {
+        "inputs": [
+          "nurse_false_alarm_labels",
+          "adjudicated_outcomes_training_window"
+        ],
+        "outputs": [
+          "label_quality_verdict",
+          "drift_report"
+        ]
+      }
+    },
+    {
+      "id": "AR1_arbitration",
+      "kind": "arbitration",
+      "responsibility": "验证、反指标、审计结论冲突时按优先级裁定，形成给人工门的单一建议",
+      "owner": "急诊脓毒症质量委员会主席（急诊科主任）",
+      "cadence": "按需",
+      "cadence_tier": "human",
+      "priority_policy": "患者安全 > 测量有效性 > 报警负担下降 > 达标速度",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "validation_report",
+          "safety_report",
+          "drift_report"
+        ],
+        "outputs": [
+          "conflict_ruling"
+        ]
+      }
+    },
+    {
+      "id": "G1_target_governance",
+      "kind": "governance_loop",
+      "responsibility": "每季度审视50%目标、敏感度底线、亚组清单与复核方案是否仍合理；只能提议修订，由人工门批准后生效；向提议 Agent 下发当期目标与边界",
+      "owner": "急诊脓毒症质量委员会",
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "side_effect": "none",
+      "writes": [
+        "current_target_and_bounds"
+      ],
+      "contract": {
+        "inputs": [
+          "drift_report",
+          "approved_target_revision"
+        ],
+        "outputs": [
+          "current_target_and_bounds",
+          "target_revision_proposal"
+        ]
+      }
+    },
+    {
+      "id": "H1_committee_gate",
+      "kind": "human_gate",
+      "responsibility": "批准或拒绝每项生产变更与目标/锚点修订；签字记录",
+      "owner": "Bruce + 急诊脓毒症质量委员会",
+      "cadence": "按需（人工）",
+      "cadence_tier": "human",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "validation_report",
+          "safety_report",
+          "conflict_ruling",
+          "target_revision_proposal"
+        ],
+        "outputs": [
+          "approval_record",
+          "approved_target_revision"
+        ]
+      }
+    },
+    {
+      "id": "D1_change_control_deploy",
+      "kind": "execution",
+      "responsibility": "信息科按变更控制先影子模式、再上线已批准的单项改动，保留回滚；执行反指标的回滚指令",
+      "owner": "信息科（系统管理员，若为商业产品则会同厂商）",
+      "cadence": "按批准",
+      "cadence_tier": "medium",
+      "side_effect": "high-risk",
+      "writes": [
+        "production_alert_config"
+      ],
+      "contract": {
+        "inputs": [
+          "approval_record",
+          "rollback_order"
+        ],
+        "outputs": [
+          "live_deployment_log",
+          "change_record"
+        ]
+      }
+    },
+    {
+      "id": "S1_stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "按 completed/blocked/failed/budget_exhausted/stalled 收尾，交接现行配置与证据给 Bruce 和委员会",
+      "owner": "Bruce",
+      "cadence": "终态",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "change_record",
+          "approval_record",
+          "no_safe_candidate_report"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "A1_blinded_chart_adjudication",
+      "to": "V1_independent_validation",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes_holdout_window"
+    },
+    {
+      "from": "A1_blinded_chart_adjudication",
+      "to": "C1_safety_counter_metrics",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes_holdout_window"
+    },
+    {
+      "from": "A1_blinded_chart_adjudication",
+      "to": "AU1_label_and_measurement_audit",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes_training_window"
+    },
+    {
+      "from": "A1_blinded_chart_adjudication",
+      "to": "E1_threshold_proposal_agent",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes_training_window（仅训练窗口，留出期对 Agent 不可见）"
+    },
+    {
+      "from": "A2_outcome_registry",
+      "to": "V1_independent_validation",
+      "relation": "anchors",
+      "artifact": "outcome_registry"
+    },
+    {
+      "from": "A2_outcome_registry",
+      "to": "C1_safety_counter_metrics",
+      "relation": "anchors",
+      "artifact": "outcome_registry（漏诊病例来源）"
+    },
+    {
+      "from": "G1_target_governance",
+      "to": "E1_threshold_proposal_agent",
+      "relation": "constrains",
+      "artifact": "current_target_and_bounds（目标、底线、单次步长上限）"
+    },
+    {
+      "from": "AU1_label_and_measurement_audit",
+      "to": "E1_threshold_proposal_agent",
+      "relation": "constrains",
+      "artifact": "label_quality_verdict（可用标记范围；一致性过低时冻结提议）"
+    },
+    {
+      "from": "E1_threshold_proposal_agent",
+      "to": "V1_independent_validation",
+      "relation": "feeds",
+      "artifact": "proposal_dossier"
+    },
+    {
+      "from": "E1_threshold_proposal_agent",
+      "to": "C1_safety_counter_metrics",
+      "relation": "feeds",
+      "artifact": "proposal_dossier（预测漏诊与亚组影响）"
+    },
+    {
+      "from": "E1_threshold_proposal_agent",
+      "to": "S1_stop_handoff",
+      "relation": "escalates",
+      "artifact": "no_safe_candidate_report（3轮内无安全候选）"
+    },
+    {
+      "from": "V1_independent_validation",
+      "to": "H1_committee_gate",
+      "relation": "constrains",
+      "artifact": "validation_report（不过则不得批准）"
+    },
+    {
+      "from": "V1_independent_validation",
+      "to": "AR1_arbitration",
+      "relation": "escalates",
+      "artifact": "validation_report"
+    },
+    {
+      "from": "C1_safety_counter_metrics",
+      "to": "H1_committee_gate",
+      "relation": "vetoes",
+      "artifact": "safety_report（预测或实盘跌破底线即否决）"
+    },
+    {
+      "from": "C1_safety_counter_metrics",
+      "to": "D1_change_control_deploy",
+      "relation": "vetoes",
+      "artifact": "rollback_order（预批准：回滚到上一已批准配置）"
+    },
+    {
+      "from": "C1_safety_counter_metrics",
+      "to": "AR1_arbitration",
+      "relation": "escalates",
+      "artifact": "safety_report"
+    },
+    {
+      "from": "AU1_label_and_measurement_audit",
+      "to": "AR1_arbitration",
+      "relation": "escalates",
+      "artifact": "drift_report"
+    },
+    {
+      "from": "AU1_label_and_measurement_audit",
+      "to": "G1_target_governance",
+      "relation": "feeds",
+      "artifact": "drift_report"
+    },
+    {
+      "from": "AR1_arbitration",
+      "to": "H1_committee_gate",
+      "relation": "arbitrates",
+      "artifact": "conflict_ruling"
+    },
+    {
+      "from": "G1_target_governance",
+      "to": "H1_committee_gate",
+      "relation": "escalates",
+      "artifact": "target_revision_proposal"
+    },
+    {
+      "from": "H1_committee_gate",
+      "to": "G1_target_governance",
+      "relation": "revises",
+      "artifact": "approved_target_revision"
+    },
+    {
+      "from": "H1_committee_gate",
+      "to": "D1_change_control_deploy",
+      "relation": "constrains",
+      "artifact": "approval_record（单项改动、影子模式期、回滚方案）"
+    },
+    {
+      "from": "H1_committee_gate",
+      "to": "S1_stop_handoff",
+      "relation": "hands_off",
+      "artifact": "approval_record 与终态判定"
+    },
+    {
+      "from": "D1_change_control_deploy",
+      "to": "C1_safety_counter_metrics",
+      "relation": "feeds",
+      "artifact": "live_deployment_log"
+    },
+    {
+      "from": "D1_change_control_deploy",
+      "to": "S1_stop_handoff",
+      "relation": "hands_off",
+      "artifact": "change_record"
+    },
+    {
+      "from": "AR1_arbitration",
+      "to": "E1_threshold_proposal_agent",
+      "relation": "arbitrates",
+      "artifact": "conflict_ruling（审计冻结与治理目标冲突时以安全和测量有效性优先）"
+    }
+  ],
+  "open_questions_for_bruce": [
+    "预警系统是自研规则、医院信息系统内置评分（如 qSOFA/NEWS 类）还是厂商模型？决定阈值能否本地调整及合规路径。",
+    "现有上线前基线是否有经复核的敏感度/阳性预测值？若没有，第一步是建立≥3个月的盲法复核基线，此前图处于 blocked。",
+    "护士“误报”标记的定义与入口（报警当下点选还是事后补标）？",
+    "委员会是否接受非阈值手段（重复报警抑制、分级推送）计入“误报减半”？"
+  ],
+  "first_steps": [
+    "建立复核方案与上线前基线（A1/A2），确认 last_confirmed 后才能启动 V1/C1",
+    "冻结敏感度底线、亚组清单、单次步长与观察窗，由委员会签字",
+    "提议 Agent 只读接入训练窗口数据，先做离线分析报告，不触碰生产"
+  ],
+  "known_residual_findings": [
+    "diagnose 报 decayed_measurement：两个锚点缺 last_confirmed。这是如实状态——锚点基线尚未建立，不虚构日期；在基线确认前整图不得进入 ready/executing。"
+  ]
+}

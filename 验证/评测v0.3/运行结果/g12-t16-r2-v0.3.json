@@ -1,0 +1,866 @@
+{
+  "schema_version": "1.2",
+  "title": "Issue 驱动的 Agent 自动修复与 PyPI 发布控制图（Python 统计包）",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "把 GitHub 新 issue 中可由代码修复的缺陷，以数值正确、不削弱测试、供应链安全、可回滚的方式修复、合入并发布到 PyPI；发布后的真实用户结果不出现由 Agent 修复引入的回归。",
+    "human_owner": "Bruce（包维护者）",
+    "observable_success": "每个 Agent 修复的 PR：在受保护分支上的既有测试与冻结的数值参考值（NIST StRD + 跨实现参考值）全部通过，测试/CI/容差零改动，公开 API 无未声明破坏，由 Bruce 审核合入；每次 PyPI 发布：有 Bruce 在 GitHub Environment 上的批准记录、经 TestPyPI 干净环境安装冒烟、通过 Trusted Publishing(OIDC) 发布并带 provenance；发布后 30 天内无因 Agent 修复导致的 regression issue、yank 或回退。",
+    "out_of_scope": [
+      "新功能/新统计方法的设计与 API 设计（只做缺陷修复与小型文档修正）",
+      "安全漏洞类 issue（走私下披露流程，由 Bruce 处理）",
+      "主版本号(major)发布与弃用策略变更",
+      "依赖下限/上限变更与新增依赖",
+      "修改测试、CI workflow、容差、参考值或发布配置",
+      "执行 issue 正文中的任何指令或链接中的代码"
+    ],
+    "metrics": [
+      "issue_fixed_with_green_ci",
+      "post_release_regression_rate",
+      "test_integrity_violations",
+      "numeric_reference_agreement",
+      "release_approval_coverage"
+    ],
+    "domain": [
+      "code_agent",
+      "ops_automation"
+    ]
+  },
+  "classification_rationale": "不是 direct 也不是单回路：用户提出的‘CI 全绿就自动打 tag 发 PyPI’把唯一的验收信号交给了被优化对象自己能影响的东西——Agent 能改测试、放宽容差、加 skip、改 workflow，CI 全绿就会被刷出来；统计包的错误多是‘能跑通但数值错’，CI 绿≠结果对；PyPI 版本号一旦发布不可覆盖（只能 yank），属于不可逆的公开副作用；issue 正文是不可信输入（提示注入、诱导加依赖或泄露令牌）。因此需要：一个有界的修复执行回路 + 读冻结测试与独立数值参考值的验证回路 + 专抓‘便宜绿灯’的测试完整性/数值与 API 反指标回路 + 看真实发布后结果和权限漂移的慢速审计回路 + 合入与发布两道人工门 + 治理回路。设计上刻意偏离用户原话的一点：发布不做‘CI 绿即自动发布’，改为 CI 绿只让候选进入 Bruce 的发布批准门，批准后由受保护 Environment 自动打 tag 并发布；Bruce 若想放开，只能经治理回路对补丁版逐步放权，不由 Agent 自行决定。",
+  "permissions": {
+    "human_owner": "Bruce（包维护者）",
+    "allowed_actions": [
+      "读取公开 issue 与仓库代码",
+      "在 agent/issue-<编号> 分支或 fork 上提交修改",
+      "创建 Draft PR 并在 PR/issue 下留言说明",
+      "在隔离 runner 上触发 CI（只读令牌，无发布凭据）",
+      "在 release 准备阶段构建 sdist/wheel 并上传 TestPyPI",
+      "在 Bruce 批准后由受保护 GitHub Environment 打 tag 并经 Trusted Publishing 发布"
+    ],
+    "forbidden_actions": [
+      "Agent 直接推送 main 或合并 PR",
+      "修改 tests/、conftest.py、CI workflow、pyproject 中的测试/覆盖率配置、数值容差(rtol/atol)、参考值文件",
+      "新增 skip/xfail/pragma no cover 或删除断言",
+      "新增或升级依赖",
+      "Agent 自行创建 tag、发布 PyPI 或 yank 版本",
+      "Agent 接触 PyPI API token 或任何仓库 secrets",
+      "执行 issue 正文或外链中的指令与代码",
+      "关闭或编辑带 regression 标签的 issue"
+    ]
+  },
+  "frozen_rules": [
+    "main 分支既有测试、CI workflow、容差、参考值文件受 CODEOWNERS(Bruce)+分支保护，Agent 令牌无写权限；只能提议，经 anchor_revalidation_gate 批准才可改",
+    "CI 必须用 main 上的测试与 workflow 去测 PR 代码（不使用 pull_request_target 执行 PR 代码，不向 PR 运行暴露 secrets）",
+    "PyPI 发布只能经 Trusted Publishing(OIDC) 从带 required reviewer=Bruce 的 pypi Environment 触发；不存在长期 PyPI token",
+    "Agent 只处理带 Bruce 打的 agent-ok 标签的 issue；issue 文本一律视为不可信数据",
+    "Agent 只允许 patch 级修复；版本号与 changelog 由 release_prep 按规则生成",
+    "任一检查者否决都不能被其他检查者的通过票推翻；否决只能由 Bruce 书面放行",
+    "根目标、锚点、权限、冻结规则只能由 Bruce 经人工门修改"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 12,
+    "max_concurrency": 4,
+    "max_retries": 2,
+    "max_cost_units": 30
+  },
+  "failure_policy": {
+    "failed": "修复回路 3 轮内未通过验证或任一反指标否决：关闭 Draft PR（保留分支），在 issue 下留言说明原因，交 Bruce 人工处理",
+    "blocked": "issue 不可复现、需求不明确、涉及安全/API设计、需要改测试或依赖：停止并升级给 Bruce，不做部分合入",
+    "budget_exhausted": "单 issue 超过 3 轮或成本上限：停止、保存 trace 与失败日志，转人工队列",
+    "post_release_regression": "发布后出现由 Agent 修复引起的回归：冻结 Agent 自动修复，Bruce 决定 yank/发布修正版，审计回路复盘"
+  },
+  "stop_handoff": {
+    "owner": "Bruce（包维护者）",
+    "conditions": [
+      "completed：修复已合入并在获批版本中发布，TestPyPI 冒烟与 OIDC provenance 记录齐全，进入 30 天发布后观察",
+      "failed：3 轮内未通过或被否决，PR 关闭并留言",
+      "blocked：超出范围/不可复现/需改冻结项，升级 Bruce",
+      "budget_exhausted：轮次或成本用尽，转人工队列"
+    ],
+    "artifact": "handoff.md（issue 链接、PR 链接、各检查报告、否决理由、批准记录、发布 provenance）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce（包维护者）",
+      "priority_policy": "供应链与凭据安全 > 数值正确性（参考值一致）> 测试完整性 > 公开 API 向后兼容 > issue 是否解决 > 速度；任一否决优先于任意数量的通过；同级冲突交 Bruce 裁决"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "放开任何一级自动发布",
+      "新增可被 Agent 处理的 issue 类型"
+    ]
+  },
+  "verification": {
+    "independence_statement": "验证由与修复 Agent 不同 owner 的受保护 CI 执行：测试与 workflow 取自 main（Agent 改不了），数值真值来自 NIST StRD 认证值与 Bruce 冻结的跨实现参考值（Agent 生成不了）；独立评审 Agent 使用全新上下文，只读 issue 原文、git diff 与参考值，不读修复 Agent 的解释；反指标从 git 原始 diff 与 API 签名计算，不依赖 Agent 报告；发布后结果来自外部用户反馈。",
+    "checks": [
+      {
+        "name": "受保护测试+数值参考值",
+        "verifier_node": "ci_verification"
+      },
+      {
+        "name": "独立代码与新增测试审查",
+        "verifier_node": "independent_review"
+      },
+      {
+        "name": "发布构件干净安装冒烟",
+        "verifier_node": "artifact_check"
+      }
+    ]
+  },
+  "external_inputs": [
+    "GitHub issue 原文",
+    "Bruce 的 agent-ok 标签",
+    "仓库 main 代码",
+    "PyPI/GitHub 下游反馈"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_protected_tests",
+      "source": "main 分支上受 CODEOWNERS 与分支保护的既有测试套件与 CI workflow",
+      "evidence_form": "CI 在隔离 runner 上实际执行的测试日志与结果（含 Python×NumPy/SciPy 版本矩阵）",
+      "owner": "Bruce（包维护者）",
+      "freshness_rule": "每次运行都从 main HEAD 取；任何对 tests/ 或 workflow 的修改只能经 Bruce 批准合入；每 90 天 Bruce 复核一次保护规则仍生效",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15",
+      "revalidation_gate": "anchor_revalidation_gate"
+    },
+    {
+      "node_id": "anchor_numeric_reference",
+      "source": "NIST StRD 认证值 + Bruce 用 R/SciPy/statsmodels 独立生成并带校验和冻结的参考值文件",
+      "evidence_form": "参考数据集上的计算结果与认证值在冻结容差内一致的执行记录",
+      "owner": "Bruce（包维护者）",
+      "freshness_rule": "参考值只读；新增或修改需 Bruce 用独立实现重新生成并签字；每 365 天或依赖大版本升级时复核",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15",
+      "revalidation_gate": "anchor_revalidation_gate"
+    },
+    {
+      "node_id": "anchor_downstream_outcome",
+      "source": "发布后真实用户结果：GitHub 上用户提交的 regression issue、yank/回退记录、下游依赖包 CI 失败报告",
+      "evidence_form": "按版本统计的回归计数与链接（Agent 无权关闭或编辑 regression 标签 issue）",
+      "owner": "Bruce（包维护者）",
+      "freshness_rule": "每次发布后 30 天滚动统计；超过 30 天未更新则视为过期",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15",
+      "revalidation_gate": "anchor_revalidation_gate"
+    }
+  ],
+  "domain_audits": [
+    {
+      "concern": "test_integrity",
+      "node_id": "test_integrity_guard"
+    },
+    {
+      "concern": "independent_test_review",
+      "node_id": "independent_review"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "issue_triage",
+      "kind": "execution",
+      "responsibility": "把新 issue 当不可信数据解析：判断是否为可复现缺陷、是否在范围内、是否已有 agent-ok 标签；产出最小复现脚本草稿；安全类/功能类/需改测试类直接升级",
+      "owner": "triage Agent",
+      "contract": {
+        "inputs": [
+          "GitHub issue 原文",
+          "Bruce 的 agent-ok 标签"
+        ],
+        "outputs": [
+          "分诊单与最小复现"
+        ]
+      },
+      "cadence": "每个新 issue",
+      "cadence_tier": "fast",
+      "side_effect": "none",
+      "evidence_sources": [
+        "GitHub issue 原文"
+      ]
+    },
+    {
+      "id": "fix_agent",
+      "kind": "execution_loop",
+      "responsibility": "在 agent/issue-<编号> 分支内修改源码，使最小复现通过；可新增测试（只能新增文件、需独立审查），不得触碰冻结项；每轮读取检查者反馈",
+      "owner": "修复 Agent（Codex/Claude 等，只读令牌+分支写权限）",
+      "contract": {
+        "inputs": [
+          "分诊单与最小复现",
+          "检查者否决与失败日志",
+          "治理下发的处理范围"
+        ],
+        "outputs": [
+          "Draft PR 与 diff"
+        ]
+      },
+      "cadence": "每次迭代",
+      "cadence_tier": "fast",
+      "max_iterations": 3,
+      "optimizes": "issue_fixed_with_green_ci",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "agent/issue 分支"
+      ],
+      "evidence_sources": [
+        "GitHub issue 原文",
+        "Agent 分支代码"
+      ]
+    },
+    {
+      "id": "ci_verification",
+      "kind": "verification_loop",
+      "responsibility": "用 main 上的测试与 workflow 在隔离 runner 测 PR 代码：全版本矩阵、既有测试、数值参考值一致性；对 Agent 不可见的参考值给出通过/否决",
+      "owner": "受保护 GitHub Actions workflow（CODEOWNERS=Bruce）",
+      "contract": {
+        "inputs": [
+          "Draft PR 与 diff",
+          "受保护测试套件",
+          "数值参考值"
+        ],
+        "outputs": [
+          "CI 执行报告"
+        ]
+      },
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "main 受保护测试",
+        "NIST StRD/冻结参考值",
+        "隔离 runner 执行日志"
+      ]
+    },
+    {
+      "id": "test_integrity_guard",
+      "kind": "counter_metric_loop",
+      "responsibility": "反指标：从 git 原始 diff 检查 tests/、conftest、workflow、pyproject 测试配置、容差、skip/xfail/pragma、断言删除、覆盖率下降、新增依赖；任一命中即否决（专抓‘刷绿灯’）",
+      "owner": "确定性 diff 守卫脚本（Bruce 维护，main 上冻结）",
+      "contract": {
+        "inputs": [
+          "Draft PR 与 diff",
+          "受保护测试套件"
+        ],
+        "outputs": [
+          "测试完整性报告"
+        ]
+      },
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "git 原始 diff",
+        "main 受保护测试"
+      ]
+    },
+    {
+      "id": "numeric_api_guard",
+      "kind": "counter_metric_loop",
+      "responsibility": "反指标：在基准数据集上对比修复前后所有公开函数的数值输出漂移（超出冻结容差即否决，除非正是 issue 所修的那个值）、公开 API 签名/默认参数/返回结构变化、明显性能退化",
+      "owner": "确定性对比脚本（Bruce 维护）",
+      "contract": {
+        "inputs": [
+          "Draft PR 与 diff",
+          "数值参考值"
+        ],
+        "outputs": [
+          "数值漂移与 API 兼容报告"
+        ]
+      },
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "上一发布版本输出快照",
+        "NIST StRD/冻结参考值",
+        "API 签名快照"
+      ]
+    },
+    {
+      "id": "independent_review",
+      "kind": "verification_loop",
+      "responsibility": "全新上下文的评审 Agent：只读 issue 原文、git diff 与参考值，判断修复是否针对根因、统计逻辑是否正确（边界情况、NaN、自由度、权重等）、新增测试是否真的约束了行为而不是迎合实现",
+      "owner": "独立评审 Agent（不同模型/不同提示，无修复 Agent 上下文）",
+      "contract": {
+        "inputs": [
+          "Draft PR 与 diff",
+          "数值参考值"
+        ],
+        "outputs": [
+          "独立评审意见"
+        ]
+      },
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "GitHub issue 原文（独立读取）",
+        "git 原始 diff",
+        "NIST StRD/冻结参考值"
+      ]
+    },
+    {
+      "id": "conflict_arbiter",
+      "kind": "arbitration",
+      "responsibility": "按冻结的优先级合并各检查结论：任一否决即退回修复回路或升级；同级冲突交 Bruce",
+      "owner": "确定性规则 + Bruce",
+      "contract": {
+        "inputs": [
+          "CI 执行报告",
+          "测试完整性报告",
+          "数值漂移与 API 兼容报告",
+          "独立评审意见"
+        ],
+        "outputs": [
+          "裁决单"
+        ]
+      },
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "priority_policy": "供应链与凭据安全 > 数值正确性（参考值一致）> 测试完整性 > 公开 API 向后兼容 > issue 是否解决 > 速度；任一否决优先于任意数量的通过；同级冲突交 Bruce 裁决"
+    },
+    {
+      "id": "merge_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 审阅 PR、全部检查报告与裁决单后决定是否合入 main（Agent 无合并权限）",
+      "owner": "Bruce（包维护者）",
+      "contract": {
+        "inputs": [
+          "裁决单",
+          "CI 执行报告",
+          "独立评审意见"
+        ],
+        "outputs": [
+          "合入记录"
+        ]
+      },
+      "cadence": "人工按需",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "release_prep",
+      "kind": "execution",
+      "responsibility": "按规则汇总已合入修复：生成 patch 版本号与 changelog，构建 sdist/wheel，上传 TestPyPI",
+      "owner": "release workflow（无 PyPI 正式凭据）",
+      "contract": {
+        "inputs": [
+          "合入记录"
+        ],
+        "outputs": [
+          "候选发布构件"
+        ]
+      },
+      "cadence": "每版",
+      "cadence_tier": "medium",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "release 候选分支与 TestPyPI"
+      ],
+      "evidence_sources": [
+        "main 代码"
+      ]
+    },
+    {
+      "id": "artifact_check",
+      "kind": "verification_loop",
+      "responsibility": "在全新虚拟环境从 TestPyPI 安装候选构件，跑冒烟测试与数值参考值子集，检查元数据、版本号单调、wheel 内容无多余文件",
+      "owner": "独立验证 workflow（与 release_prep 不同 job/身份）",
+      "contract": {
+        "inputs": [
+          "候选发布构件",
+          "数值参考值"
+        ],
+        "outputs": [
+          "构件验证报告"
+        ]
+      },
+      "cadence": "每版",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "TestPyPI 干净安装",
+        "NIST StRD/冻结参考值"
+      ]
+    },
+    {
+      "id": "release_outcome_audit",
+      "kind": "audit_loop",
+      "responsibility": "慢速审计：按版本统计发布后回归 issue、yank、下游 CI 失败；核查 Agent 令牌权限、workflow 与分支保护是否被改、Trusted Publishing 配置；回归率超阈值则约束发布门并升级治理",
+      "owner": "审计脚本 + Bruce 每周查看",
+      "contract": {
+        "inputs": [
+          "发布后用户结果",
+          "发布记录"
+        ],
+        "outputs": [
+          "审计报告"
+        ]
+      },
+      "cadence": "每周",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "GitHub regression issue",
+        "PyPI yank 记录",
+        "下游依赖 CI",
+        "GitHub 审计日志"
+      ]
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "季度复盘：调整可交给 Agent 的 issue 类型、轮次与成本预算、阈值；是否对 patch 版本逐步放开自动发布——只能提议，经 anchor_revalidation_gate/Bruce 批准",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "审计报告"
+        ],
+        "outputs": [
+          "范围与阈值调整提案"
+        ]
+      },
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "max_iterations": 1
+    },
+    {
+      "id": "anchor_revalidation_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 复核/签字锚点（保护规则、参考值、发布后结果统计）与任何冻结项变更；锚点过期或待改时挡住所有依赖它的检查",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "范围与阈值调整提案"
+        ],
+        "outputs": [
+          "锚点签字记录"
+        ]
+      },
+      "cadence": "人工按需",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "release_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 在 GitHub pypi Environment 上批准本次发布（required reviewer）；看构件验证报告与审计报告，可拒绝",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "构件验证报告",
+          "审计报告"
+        ],
+        "outputs": [
+          "发布批准记录"
+        ]
+      },
+      "cadence": "人工按需",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "publish",
+      "kind": "execution",
+      "responsibility": "批准后自动打 tag、经 Trusted Publishing(OIDC) 发布到 PyPI 并生成 provenance、GitHub Release",
+      "owner": "受保护 pypi Environment 的发布 job",
+      "contract": {
+        "inputs": [
+          "发布批准记录",
+          "候选发布构件"
+        ],
+        "outputs": [
+          "发布记录"
+        ]
+      },
+      "cadence": "每版",
+      "cadence_tier": "medium",
+      "side_effect": "high-risk",
+      "writes": [
+        "git tag 与 PyPI 版本"
+      ]
+    },
+    {
+      "id": "anchor_protected_tests",
+      "kind": "anchor",
+      "responsibility": "main 上受保护的既有测试与 CI workflow",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "锚点签字记录"
+        ],
+        "outputs": [
+          "受保护测试套件"
+        ]
+      }
+    },
+    {
+      "id": "anchor_numeric_reference",
+      "kind": "anchor",
+      "responsibility": "NIST StRD 认证值与冻结的跨实现参考值",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "锚点签字记录"
+        ],
+        "outputs": [
+          "数值参考值"
+        ]
+      }
+    },
+    {
+      "id": "anchor_downstream_outcome",
+      "kind": "anchor",
+      "responsibility": "发布后真实用户结果",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "锚点签字记录"
+        ],
+        "outputs": [
+          "发布后用户结果"
+        ]
+      }
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "终态交接：completed/failed/blocked/budget_exhausted 写 handoff.md 交 Bruce",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "裁决单",
+          "发布记录",
+          "审计报告",
+          "分诊单与最小复现"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "issue_triage",
+      "to": "fix_agent",
+      "relation": "feeds",
+      "artifact": "分诊单与最小复现"
+    },
+    {
+      "from": "issue_triage",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "超范围/安全类分诊单与最小复现 → 升级 Bruce"
+    },
+    {
+      "from": "fix_agent",
+      "to": "ci_verification",
+      "relation": "feeds",
+      "artifact": "Draft PR 与 diff"
+    },
+    {
+      "from": "fix_agent",
+      "to": "test_integrity_guard",
+      "relation": "feeds",
+      "artifact": "Draft PR 与 diff"
+    },
+    {
+      "from": "fix_agent",
+      "to": "numeric_api_guard",
+      "relation": "feeds",
+      "artifact": "Draft PR 与 diff"
+    },
+    {
+      "from": "fix_agent",
+      "to": "independent_review",
+      "relation": "feeds",
+      "artifact": "Draft PR 与 diff"
+    },
+    {
+      "from": "fix_agent",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "3 轮用尽的失败日志与 Draft PR 与 diff"
+    },
+    {
+      "from": "anchor_protected_tests",
+      "to": "ci_verification",
+      "relation": "anchors",
+      "artifact": "受保护测试套件"
+    },
+    {
+      "from": "anchor_protected_tests",
+      "to": "test_integrity_guard",
+      "relation": "anchors",
+      "artifact": "受保护测试套件"
+    },
+    {
+      "from": "anchor_numeric_reference",
+      "to": "ci_verification",
+      "relation": "anchors",
+      "artifact": "数值参考值"
+    },
+    {
+      "from": "anchor_numeric_reference",
+      "to": "numeric_api_guard",
+      "relation": "anchors",
+      "artifact": "数值参考值"
+    },
+    {
+      "from": "anchor_numeric_reference",
+      "to": "independent_review",
+      "relation": "anchors",
+      "artifact": "数值参考值"
+    },
+    {
+      "from": "anchor_numeric_reference",
+      "to": "artifact_check",
+      "relation": "anchors",
+      "artifact": "数值参考值"
+    },
+    {
+      "from": "anchor_downstream_outcome",
+      "to": "release_outcome_audit",
+      "relation": "anchors",
+      "artifact": "发布后用户结果"
+    },
+    {
+      "from": "ci_verification",
+      "to": "fix_agent",
+      "relation": "constrains",
+      "artifact": "检查者否决与失败日志（CI）"
+    },
+    {
+      "from": "test_integrity_guard",
+      "to": "fix_agent",
+      "relation": "vetoes",
+      "artifact": "检查者否决与失败日志（测试完整性）"
+    },
+    {
+      "from": "numeric_api_guard",
+      "to": "fix_agent",
+      "relation": "vetoes",
+      "artifact": "检查者否决与失败日志（数值/API）"
+    },
+    {
+      "from": "independent_review",
+      "to": "fix_agent",
+      "relation": "constrains",
+      "artifact": "检查者否决与失败日志（评审）"
+    },
+    {
+      "from": "ci_verification",
+      "to": "conflict_arbiter",
+      "relation": "feeds",
+      "artifact": "CI 执行报告"
+    },
+    {
+      "from": "test_integrity_guard",
+      "to": "conflict_arbiter",
+      "relation": "feeds",
+      "artifact": "测试完整性报告"
+    },
+    {
+      "from": "numeric_api_guard",
+      "to": "conflict_arbiter",
+      "relation": "feeds",
+      "artifact": "数值漂移与 API 兼容报告"
+    },
+    {
+      "from": "independent_review",
+      "to": "conflict_arbiter",
+      "relation": "feeds",
+      "artifact": "独立评审意见"
+    },
+    {
+      "from": "conflict_arbiter",
+      "to": "fix_agent",
+      "relation": "arbitrates",
+      "artifact": "裁决单（退回修复）"
+    },
+    {
+      "from": "ci_verification",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "CI 执行报告"
+    },
+    {
+      "from": "independent_review",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "独立评审意见"
+    },
+    {
+      "from": "test_integrity_guard",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "测试完整性报告"
+    },
+    {
+      "from": "numeric_api_guard",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "数值漂移与 API 兼容报告"
+    },
+    {
+      "from": "conflict_arbiter",
+      "to": "merge_gate",
+      "relation": "feeds",
+      "artifact": "裁决单"
+    },
+    {
+      "from": "conflict_arbiter",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "裁决单（同级冲突/否决）"
+    },
+    {
+      "from": "merge_gate",
+      "to": "release_prep",
+      "relation": "hands_off",
+      "artifact": "合入记录"
+    },
+    {
+      "from": "release_prep",
+      "to": "artifact_check",
+      "relation": "feeds",
+      "artifact": "候选发布构件"
+    },
+    {
+      "from": "artifact_check",
+      "to": "release_gate",
+      "relation": "vetoes",
+      "artifact": "构件验证报告"
+    },
+    {
+      "from": "artifact_check",
+      "to": "release_prep",
+      "relation": "constrains",
+      "artifact": "构件验证失败报告"
+    },
+    {
+      "from": "release_outcome_audit",
+      "to": "release_gate",
+      "relation": "constrains",
+      "artifact": "审计报告（回归率/权限漂移）"
+    },
+    {
+      "from": "release_outcome_audit",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "审计报告"
+    },
+    {
+      "from": "release_outcome_audit",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "审计报告"
+    },
+    {
+      "from": "release_gate",
+      "to": "publish",
+      "relation": "constrains",
+      "artifact": "发布批准记录"
+    },
+    {
+      "from": "release_prep",
+      "to": "publish",
+      "relation": "feeds",
+      "artifact": "候选发布构件"
+    },
+    {
+      "from": "publish",
+      "to": "release_outcome_audit",
+      "relation": "feeds",
+      "artifact": "发布记录"
+    },
+    {
+      "from": "publish",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "发布记录"
+    },
+    {
+      "from": "governance",
+      "to": "anchor_revalidation_gate",
+      "relation": "escalates",
+      "artifact": "范围与阈值调整提案"
+    },
+    {
+      "from": "governance",
+      "to": "fix_agent",
+      "relation": "revises",
+      "artifact": "治理下发的处理范围（经批准后）"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "anchor_protected_tests",
+      "relation": "revises",
+      "artifact": "锚点签字记录"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "anchor_numeric_reference",
+      "relation": "revises",
+      "artifact": "锚点签字记录"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "anchor_downstream_outcome",
+      "relation": "revises",
+      "artifact": "锚点签字记录"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "ci_verification",
+      "relation": "vetoes",
+      "artifact": "锚点签字记录（未复核则挡住验收）"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "test_integrity_guard",
+      "relation": "vetoes",
+      "artifact": "锚点签字记录（未复核则挡住验收）"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "numeric_api_guard",
+      "relation": "vetoes",
+      "artifact": "锚点签字记录（未复核则挡住验收）"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "independent_review",
+      "relation": "vetoes",
+      "artifact": "锚点签字记录（未复核则挡住验收）"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "artifact_check",
+      "relation": "vetoes",
+      "artifact": "锚点签字记录（未复核则挡住验收）"
+    },
+    {
+      "from": "anchor_revalidation_gate",
+      "to": "release_outcome_audit",
+      "relation": "vetoes",
+      "artifact": "锚点签字记录（未复核则挡住验收）"
+    }
+  ],
+  "design_notes": [
+    "三个锚点的 last_confirmed=2026-11-15 是设计基线日期，不代表已在仓库中落实；approval 仍为 pending，Bruce 在启用分支保护、冻结参考值文件、配置 pypi Environment 与 Trusted Publishing 后经 anchor_revalidation_gate 签字确认，之前不得运行。",
+    "与用户原话的有意偏离：CI 全绿只把候选送到 release_gate，PyPI 发布需要 Bruce 在受保护 Environment 上一次点击批准；理由是 CI 绿可被 Agent 刷出、统计错误常常‘能跑但数值错’、PyPI 版本不可覆盖。若日后要对 patch 版放开全自动，需经 governance 提案、审计回归率达标并由 Bruce 批准。"
+  ]
+}

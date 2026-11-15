@@ -1,0 +1,504 @@
+{
+  "schema_version": "1.1",
+  "title": "规培住院医师题库：生成-难度调整-出科考试 控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "有两个持续运行的循环（Agent A 每周出题、Agent B 根据正确率调难度），而且结果会直接用于高风险的出科考试，所以需要用图来分开职责：独立的医学内容核验、反 Goodhart 的对冲指标、练习题和考试题隔离，以及人工发布闸门。单纯的 loop 会把“平均正确率 70%”当成真实目标；可是这个数字只要把题改简单或改难就能凑出来，不代表学员能力。另外，练习时学员已经见过的题直接进考试会造成泄题，也会让考试失去效度。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "用题库支撑规培住院医师的能力培养；出科考试要能有效、公平、无泄题地区分学员是否达到出科要求。平均正确率 70% 只用作练习难度的调节参考，不是最终目标。",
+    "human_owner": "Bruce",
+    "observable_success": "每期出科考试卷：每道题都由人工专家签字确认医学内容正确，并标注对应的规培大纲条目；试卷覆盖大纲的比例达到考核蓝图要求；考试题均未在练习池出现过；预测试的区分度（点二列相关）≥0.2；科室教学负责人签字后才能发布。练习端的平均正确率维持在 60–80% 区间，并且没有出现内容正确性或区分度下降。",
+    "metrics": [
+      "练习平均正确率",
+      "题目医学正确率",
+      "区分度",
+      "大纲覆盖率",
+      "考试题曝光率",
+      "干扰项有效性",
+      "学员能力增长"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "Agent A 起草候选单选题写入草稿池",
+      "Agent B 在练习池内调整题目难度并生成新版本",
+      "读取匿名化答题统计",
+      "生成核验报告与考试卷候选",
+      "向人工审核人提交待审材料"
+    ],
+    "forbidden_actions": [
+      "未经人工签字把任何题目写入出科考试卷",
+      "把练习池中学员见过的题或其改写版直接用于出科考试",
+      "Agent B 修改题目的正确答案或医学事实陈述",
+      "为凑正确率而删除难但有效的题或修改评分标准",
+      "Agent 自行发布考试或改动考核蓝图",
+      "导出可识别学员身份的成绩数据"
+    ]
+  },
+  "frozen_rules": [
+    "出科考试题与练习题必须分池；考试题在开考前不得对学员曝光",
+    "医学正确性以现行教材、规培大纲和国家/学会指南为准，Agent 自评不能代替核验",
+    "70% 是练习难度的调节目标，不是考试合格线或考试设计目标；考试合格线由人工按标准设定",
+    "难度调整只能改题干信息量、干扰项和情境复杂度，不能改正确答案或医学结论",
+    "每道考试题都要有人工专家签字和大纲条目标注",
+    "考核蓝图（各大纲模块的题量比例）由教学负责人冻结，Agent 无权修改"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": "核验没通过的题退回 Agent A，最多重试 2 次，仍不通过就弃用并记录原因；对冲指标恶化（区分度 <0.2、覆盖率不达标、正确性问题）时，冻结 Agent B 的调整并上报 Bruce；锚点过期时暂停发布考试卷，直到人工重新确认锚点；考试卷没有人工签字一律不发布。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "发现已发布或待发布的考试题有医学错误",
+      "考试题泄漏到练习池或学员可见范围",
+      "连续 2 个周期区分度或覆盖率低于阈值",
+      "Agent B 的调整连续 3 轮在 60–80% 区间外振荡",
+      "教材、大纲或指南更新导致锚点失效",
+      "预算或重试次数用尽"
+    ],
+    "artifact": "交接包：问题题目清单、核验报告、指标趋势、曝光审计记录和建议处置"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "学员匿名化答题记录",
+    "规培大纲与考核蓝图",
+    "现行教材与指南版本"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_curriculum",
+      "source": "国家住院医师规范化培训内容与标准及本基地考核蓝图",
+      "evidence_form": "大纲条目编号与各模块题量比例（PDF/表格版本号）",
+      "owner": "科室教学负责人",
+      "freshness_rule": "大纲或蓝图换版时立即重新确认，至少每学年确认一次",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_medical_reference",
+      "source": "指定版本的规划教材与现行国家/学会诊疗指南",
+      "evidence_form": "引用的教材章节或指南条款（含版本与年份）",
+      "owner": "学科审题专家",
+      "freshness_rule": "指南有更新时重新核对受影响的题目，每半年做一次全面复核",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_curriculum",
+      "kind": "anchor",
+      "responsibility": "提供冻结的大纲条目与考核蓝图",
+      "owner": "科室教学负责人",
+      "contract": {
+        "inputs": [
+          "规培大纲与考核蓝图"
+        ],
+        "outputs": [
+          "大纲条目表",
+          "考核蓝图"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_medical_reference",
+      "kind": "anchor",
+      "responsibility": "提供医学正确性的权威依据",
+      "owner": "学科审题专家",
+      "contract": {
+        "inputs": [
+          "现行教材与指南版本"
+        ],
+        "outputs": [
+          "权威引用库"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "agent_a_generate",
+      "kind": "execution_loop",
+      "responsibility": "Agent A 每周按大纲条目起草新的单选题（题干、5 个选项、答案、解析、出处），写入草稿池",
+      "owner": "Agent A",
+      "contract": {
+        "inputs": [
+          "大纲条目表",
+          "权威引用库",
+          "退回意见"
+        ],
+        "outputs": [
+          "候选题（含出处）"
+        ]
+      },
+      "max_iterations": 3,
+      "writes": [
+        "草稿池"
+      ],
+      "side_effect": "internal-reversible",
+      "evidence_sources": [
+        "权威引用库"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "content_verifier",
+      "kind": "verification_loop",
+      "responsibility": "独立核验医学正确性、唯一正确答案、干扰项是否合理、出处是否真实、是否对应大纲条目；不通过就退回",
+      "owner": "独立核验 Agent（不同模型/上下文）",
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "候选题（含出处）",
+          "权威引用库",
+          "大纲条目表"
+        ],
+        "outputs": [
+          "核验通过题",
+          "退回意见",
+          "核验报告"
+        ]
+      },
+      "max_iterations": 2,
+      "evidence_sources": [
+        "权威引用库",
+        "大纲条目表"
+      ],
+      "writes": [
+        "练习池"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "agent_b_difficulty",
+      "kind": "execution_loop",
+      "responsibility": "Agent B 只在练习池内，根据匿名正确率调整题目的呈现难度（题干信息量、干扰项相似度、情境复杂度），把练习平均正确率调向 70%；不改答案和医学结论；每次调整都生成新版本，再送回核验",
+      "owner": "Agent B",
+      "optimizes": "练习平均正确率",
+      "contract": {
+        "inputs": [
+          "学员匿名化答题记录",
+          "练习池题目",
+          "对冲指标告警"
+        ],
+        "outputs": [
+          "难度调整版本",
+          "正确率趋势"
+        ]
+      },
+      "max_iterations": 4,
+      "writes": [
+        "练习池版本草稿"
+      ],
+      "side_effect": "internal-reversible",
+      "evidence_sources": [
+        "学员匿名化答题记录"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "counter_metrics",
+      "kind": "counter_metric_loop",
+      "responsibility": "监控 Agent B 是否在用错误方式凑出 70%：区分度、干扰项有效性、大纲覆盖率、难题被删的比例，以及能力是否真的增长（同一知识点的锚题前后测）；指标恶化就否决调整",
+      "owner": "独立统计 Agent",
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "难度调整版本",
+          "正确率趋势",
+          "学员匿名化答题记录",
+          "考核蓝图"
+        ],
+        "outputs": [
+          "对冲指标报告",
+          "对冲指标告警",
+          "否决决定"
+        ]
+      },
+      "max_iterations": 4,
+      "evidence_sources": [
+        "学员匿名化答题记录",
+        "考核蓝图",
+        "固定锚题前后测"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "exposure_audit",
+      "kind": "audit_loop",
+      "responsibility": "审计练习池和考试池是否隔离：检测考试候选题是否与练习题重复或高度相似，以及是否有学员曝光记录",
+      "owner": "审计 Agent",
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "练习池题目",
+          "考试候选卷"
+        ],
+        "outputs": [
+          "曝光审计记录"
+        ]
+      },
+      "max_iterations": 2,
+      "evidence_sources": [
+        "练习池曝光日志",
+        "相似度检测"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "exam_assembler",
+      "kind": "synthesis",
+      "responsibility": "从独立的考试候选池（核验通过、从未进入练习池的题）按冻结蓝图组卷，难度依据预测试或专家估计，不用练习正确率直接决定",
+      "owner": "组卷 Agent",
+      "contract": {
+        "inputs": [
+          "核验通过题",
+          "考核蓝图",
+          "对冲指标报告"
+        ],
+        "outputs": [
+          "考试候选卷"
+        ]
+      },
+      "writes": [
+        "考试候选卷"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "expert_gate",
+      "kind": "human_gate",
+      "responsibility": "学科专家逐题签字确认医学内容和大纲对应；教学负责人确认蓝图覆盖、合格线和曝光审计后，签字发布",
+      "owner": "学科审题专家 + 科室教学负责人",
+      "contract": {
+        "inputs": [
+          "考试候选卷",
+          "核验报告",
+          "对冲指标报告",
+          "曝光审计记录"
+        ],
+        "outputs": [
+          "签字考试卷或驳回意见"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "正式考试卷"
+      ],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "每月复盘：查看两条循环的指标趋势、锚点新鲜度和停止条件，决定是否调整阈值或暂停 Agent B",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "对冲指标报告",
+          "核验报告",
+          "曝光审计记录",
+          "考后分析"
+        ],
+        "outputs": [
+          "治理决定"
+        ]
+      },
+      "max_iterations": 12,
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "stop",
+      "kind": "stop_handoff",
+      "responsibility": "满足停止条件时冻结发布并交接给 Bruce",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "治理决定",
+          "对冲指标告警"
+        ],
+        "outputs": [
+          "交接包"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {
+      "from": "anchor_curriculum",
+      "to": "agent_a_generate",
+      "relation": "anchors",
+      "artifact": "大纲条目表"
+    },
+    {
+      "from": "anchor_medical_reference",
+      "to": "agent_a_generate",
+      "relation": "anchors",
+      "artifact": "权威引用库"
+    },
+    {
+      "from": "anchor_medical_reference",
+      "to": "content_verifier",
+      "relation": "anchors",
+      "artifact": "权威引用库"
+    },
+    {
+      "from": "anchor_curriculum",
+      "to": "content_verifier",
+      "relation": "anchors",
+      "artifact": "大纲条目表"
+    },
+    {
+      "from": "anchor_curriculum",
+      "to": "counter_metrics",
+      "relation": "anchors",
+      "artifact": "考核蓝图"
+    },
+    {
+      "from": "anchor_curriculum",
+      "to": "exam_assembler",
+      "relation": "constrains",
+      "artifact": "考核蓝图"
+    },
+    {
+      "from": "agent_a_generate",
+      "to": "content_verifier",
+      "relation": "feeds",
+      "artifact": "候选题（含出处）"
+    },
+    {
+      "from": "content_verifier",
+      "to": "agent_a_generate",
+      "relation": "revises",
+      "artifact": "退回意见"
+    },
+    {
+      "from": "content_verifier",
+      "to": "agent_b_difficulty",
+      "relation": "feeds",
+      "artifact": "练习池题目"
+    },
+    {
+      "from": "agent_b_difficulty",
+      "to": "content_verifier",
+      "relation": "revises",
+      "artifact": "难度调整版本（重新核验）"
+    },
+    {
+      "from": "agent_b_difficulty",
+      "to": "counter_metrics",
+      "relation": "feeds",
+      "artifact": "难度调整版本 + 正确率趋势"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "agent_b_difficulty",
+      "relation": "vetoes",
+      "artifact": "否决决定 / 对冲指标告警"
+    },
+    {
+      "from": "content_verifier",
+      "to": "exam_assembler",
+      "relation": "feeds",
+      "artifact": "核验通过题（考试候选池，非练习池）"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "exam_assembler",
+      "relation": "feeds",
+      "artifact": "对冲指标报告"
+    },
+    {
+      "from": "exam_assembler",
+      "to": "exposure_audit",
+      "relation": "feeds",
+      "artifact": "考试候选卷"
+    },
+    {
+      "from": "exposure_audit",
+      "to": "expert_gate",
+      "relation": "verifies",
+      "artifact": "曝光审计记录"
+    },
+    {
+      "from": "exam_assembler",
+      "to": "expert_gate",
+      "relation": "feeds",
+      "artifact": "考试候选卷"
+    },
+    {
+      "from": "content_verifier",
+      "to": "expert_gate",
+      "relation": "feeds",
+      "artifact": "核验报告"
+    },
+    {
+      "from": "expert_gate",
+      "to": "exam_assembler",
+      "relation": "revises",
+      "artifact": "驳回意见"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "governance",
+      "relation": "observes",
+      "artifact": "对冲指标报告"
+    },
+    {
+      "from": "exposure_audit",
+      "to": "governance",
+      "relation": "observes",
+      "artifact": "曝光审计记录"
+    },
+    {
+      "from": "expert_gate",
+      "to": "governance",
+      "relation": "observes",
+      "artifact": "考后分析"
+    },
+    {
+      "from": "governance",
+      "to": "agent_b_difficulty",
+      "relation": "constrains",
+      "artifact": "治理决定（阈值/暂停）"
+    },
+    {
+      "from": "governance",
+      "to": "stop",
+      "relation": "escalates",
+      "artifact": "治理决定"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "stop",
+      "relation": "escalates",
+      "artifact": "严重对冲指标告警"
+    },
+    {
+      "from": "stop",
+      "to": "governance",
+      "relation": "hands_off",
+      "artifact": "交接包"
+    }
+  ]
+}

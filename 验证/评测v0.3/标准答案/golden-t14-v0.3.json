@@ -1,0 +1,278 @@
+{
+ "schema_version": "1.1",
+ "title": "脓毒症预警阈值调整",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "减少无效报警同时不漏掉真正的脓毒症",
+  "human_owner": "Bruce",
+  "observable_success": "误报下降且经病历复核确诊的脓毒症漏报率（敏感性）不下降，急诊科主任批准阈值变更",
+  "metrics": [
+   "false_alarm_rate"
+  ]
+ },
+ "external_inputs": [
+  "chart-review",
+  "alert-log",
+  "antibiotic-timing-log",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "离线回放不同阈值",
+   "生成阈值建议报告"
+  ],
+  "forbidden_actions": [
+   "自动修改线上预警阈值",
+   "把护士误报标记直接当金标准"
+  ]
+ },
+ "frozen_rules": [
+  "护士误报标记只作线索，金标准是独立病历复核的 Sepsis-3 确诊与结局",
+  "阈值变更须急诊科主任批准"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "漏报上升",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "outcomes",
+   "source": "独立病历复核的 Sepsis-3 确诊、血培养、抗生素启动与 ICU/死亡结局",
+   "evidence_form": "复核表",
+   "owner": "感染科复核小组",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "outcomes",
+   "kind": "anchor",
+   "responsibility": "冻结的病历复核确诊与结局",
+   "owner": "感染科复核小组",
+   "contract": {
+    "inputs": [
+     "chart-review"
+    ],
+    "outputs": [
+     "outcome-set"
+    ]
+   }
+  },
+  {
+   "id": "tune",
+   "kind": "execution_loop",
+   "responsibility": "离线回放上周报警，提出阈值建议",
+   "owner": "阈值 Agent",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "alert-log"
+    ],
+    "outputs": [
+     "threshold-proposal"
+    ]
+   },
+   "optimizes": "false_alarm_rate",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "alert-log"
+   ],
+   "writes": [
+    "proposals/"
+   ]
+  },
+  {
+   "id": "outcome-check",
+   "kind": "verification_loop",
+   "responsibility": "用病历复核结局独立评估建议阈值下的误报与漏报",
+   "owner": "质控统计员",
+   "contract": {
+    "inputs": [
+     "threshold-proposal",
+     "outcome-set"
+    ],
+    "outputs": [
+     "outcome-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "outcome-set"
+   ]
+  },
+  {
+   "id": "miss-watch",
+   "kind": "counter_metric_loop",
+   "responsibility": "监测漏报（敏感性下降、确诊脓毒症未报警、抗生素延误）",
+   "owner": "急诊质控护士长",
+   "contract": {
+    "inputs": [
+     "threshold-proposal"
+    ],
+    "outputs": [
+     "miss-report"
+    ]
+   },
+   "max_iterations": 1,
+   "evidence_sources": [
+    "antibiotic-timing-log"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "误报与漏报冲突时裁决",
+   "owner": "急诊科主任",
+   "contract": {
+    "inputs": [
+     "outcome-report",
+     "miss-report"
+    ],
+    "outputs": [
+     "recommendation"
+    ]
+   },
+   "priority_policy": "不增加漏报 > 降低误报"
+  },
+  {
+   "id": "change-gate",
+   "kind": "human_gate",
+   "responsibility": "急诊科主任批准阈值变更上线",
+   "owner": "急诊科主任",
+   "contract": {
+    "inputs": [
+     "recommendation"
+    ],
+    "outputs": [
+     "change-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "tune",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "outcomes",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "outcomes",
+   "to": "outcome-check",
+   "relation": "anchors",
+   "artifact": "outcome-set"
+  },
+  {
+   "from": "tune",
+   "to": "outcome-check",
+   "relation": "feeds",
+   "artifact": "threshold-proposal"
+  },
+  {
+   "from": "tune",
+   "to": "miss-watch",
+   "relation": "feeds",
+   "artifact": "threshold-proposal"
+  },
+  {
+   "from": "miss-watch",
+   "to": "tune",
+   "relation": "observes",
+   "artifact": "miss-report"
+  },
+  {
+   "from": "outcome-check",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "outcome-report"
+  },
+  {
+   "from": "miss-watch",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "miss-report"
+  },
+  {
+   "from": "outcome-check",
+   "to": "change-gate",
+   "relation": "vetoes",
+   "artifact": "outcome-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "change-gate",
+   "relation": "constrains",
+   "artifact": "recommendation"
+  },
+  {
+   "from": "change-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "change-decision"
+  }
+ ]
+}

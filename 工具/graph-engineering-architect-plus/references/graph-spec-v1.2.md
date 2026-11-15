@@ -60,6 +60,7 @@ from, to, relation, artifact。relation ∈ feeds, observes, verifies, constrain
 | 代码 | 含义 | 修法 |
 |---|---|---|
 | E-STALE | 锚点超过 max_age_days 且没有东西阻止它被使用 | 设 `revalidation_gate`，该人工门对此锚点喂给的**每个**检查者都有 vetoes/constrains 边；diagnose 状态变为 `pending_revalidation` |
+| （v1.3，diagnose） | 锚点从未确认（last_confirmed 留空）：有上述人工门 → `pending_revalidation`（待首次确认）；没有 → decayed_measurement | 如实留空，不要编日期；设 `revalidation_gate` |
 | E-DOMAIN | 声明了 domain，但某个必需关注点没分配，或分配给了执行者/无否决权的检查者 | 在 `domain_audits` 里把它分给有牙齿的检查节点 |
 | W-NODOMAIN | 图模式下没声明 domain | 声明 domain 或确认不属于已知领域 |
 

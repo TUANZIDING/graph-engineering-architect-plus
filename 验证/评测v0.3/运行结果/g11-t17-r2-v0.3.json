@@ -1,0 +1,607 @@
+{
+ "schema_version": "1.1",
+ "title": "规培住院医师题库与出科考试控制架构（Agent A 出题 / Agent B 调难度）",
+ "mode": "graph_plus_loop",
+ "state": "designed",
+ "root_goal": {
+  "statement": "出科考试能有效、公平地判定住院医师是否达到本轮转的规培标准；日常练习题库帮助学员学习。'平均正确率稳定在70%'只作为练习池的自适应目标区间，不作为出科考试的目标或合格线。",
+  "human_owner": "Bruce（题库系统负责人）与科室教学主任联合负责",
+  "observable_success": "(1) 每份出科试卷的题目100%经两名主治及以上带教医师独立审题、对照现行规培大纲与指南无医学错误；(2) 试卷符合本轮转考试蓝图（知识点覆盖与比例偏差在批准范围内）；(3) 合格线由专家标准设定（如改良Angoff）并经签字，与当期正确率无关；(4) 出科考试合格判定与独立的带教医师临床考核（mini-CEX/DOPS）结果有可接受的一致性，按季度复核；(5) 试卷中无在练习池中暴露过的题目；(6) 练习池正确率落在批准区间，且区分度等反指标不恶化。",
+  "out_of_scope": [
+   "生成或修改临床诊疗规范本身",
+   "替代带教医师的临床能力考核与结业考核",
+   "由系统自动决定学员出科是否合格（只出分数，判定归考核小组）",
+   "学员个人成绩之外的人事或奖惩决定"
+  ],
+  "metrics": [
+   "出科合格判定与独立临床考核一致性",
+   "题目医学正确率",
+   "考试蓝图覆盖率",
+   "题目区分度",
+   "练习正确率处于批准区间",
+   "经核验新题产出"
+  ]
+ },
+ "classification_rationale": "不是单回路：存在两个相互作用的优化回路（A 追求产量、B 追求练习正确率≈70%），且该指标极易被刷——B 可以把题改简单、让题干暗示答案或重复推送熟题来达到70%，而这与'考试能否区分合格与不合格'正相反。原方案还让调整后的题目直接进入高风险的出科考试：练习题进考试会泄题，按正确率调难度会把考试变成常模参照、控制通过率。因此需要独立的医学内容验证、心理测量反指标、蓝图与泄题审计、明确仲裁优先级、冻结的现实锚点（规培大纲/指南、专家设定的切分分数与独立临床考核），以及发布考试前的人工签字门；A、B 各自内部仍是有界回路，故为 graph_plus_loop。",
+ "permissions": {
+  "human_owner": "Bruce 与科室教学主任",
+  "allowed_actions": [
+   "Agent A 每周生成练习题草稿并标注知识点",
+   "Agent B 仅在已核验的练习池内、在批准的调整幅度内调整难度标签和推送顺序",
+   "统计脚本计算题目难度、区分度、干扰项功能、曝光次数",
+   "组卷工具按冻结蓝图从封存考试池抽题生成试卷草案",
+   "任何节点提出目标、阈值、锚点修订提案"
+  ],
+  "forbidden_actions": [
+   "Agent B 修改出科考试题目、考试题池或试卷",
+   "把在练习池中暴露过的题目放入出科考试",
+   "以平均正确率70%作为出科合格线，或按当期正确率调整考试难度以控制通过率",
+   "任何 Agent 修改规培大纲映射、考试蓝图、锚题、切分分数或审题标准",
+   "未经人工联签发布出科考试",
+   "Agent A 或 B 自行审核自己生成或调整的题目"
+  ]
+ },
+ "frozen_rules": [
+  "练习池与出科考试封存池物理隔离；练习曝光过的题永不进入考试",
+  "出科合格线由专家标准设定法确定并签字，不随正确率浮动",
+  "考试蓝图、锚题集、切分分数、审题标准只能经人工门修改",
+  "医学正确性一票否决，优先于任何难度或产量指标",
+  "Agent B 每周每题难度调整幅度和练习正确率目标区间（默认65%–75%，以70%为中心）由人工批准，B 不能自改",
+  "审计与验证节点的阈值不得由 A/B 修改"
+ ],
+ "approval": {
+  "status": "pending"
+ },
+ "budget": {
+  "max_agents": 8,
+  "max_concurrency": 3,
+  "max_retries": 2,
+  "max_cost_units": 40
+ },
+ "failure_policy": {
+  "failed": "审题否决率连续两周>30%或发现已上线题目存在医学错误：暂停 Agent A 出题，已发布错题下架并通知学员，升级至教学主任",
+  "blocked": "锚点（大纲/指南版本、锚题、切分分数）过期或未确认、或缺少两名独立审题人：本月不组卷，沿用上一份已签字试卷或人工命题，并升级",
+  "budget_exhausted": "停止新增题目，冻结练习池当前状态，交接给 Bruce 决定是否追加预算",
+  "stalled": "练习正确率连续4周偏离区间而区分度已到下限：停止 B 继续调整，交仲裁与季度治理复核目标是否合理"
+ },
+ "stop_handoff": {
+  "owner": "Bruce 与科室教学主任",
+  "conditions": [
+   "completed：试卷经联签发布、考试完成，成绩与题目参数归档",
+   "blocked：锚点过期/审题人不足/仲裁未决，暂停组卷并说明缺口",
+   "failed：发现医学错误或泄题，撤卷、下架并启动人工复核",
+   "budget_exhausted：预算用尽，冻结状态并交接"
+  ],
+  "artifact": "handoff.md（本月试卷版本、审题记录、题目参数报告、审计结论、仲裁记录、签字页、未决问题）"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "governance": {
+  "arbitration": {
+   "owner": "科室教学主任",
+   "priority_policy": "医学正确性与患者安全 > 合格线有效性与考试蓝图覆盖 > 考试安全（不泄题、练习与考试隔离）> 题目区分度与公平性 > 练习正确率处于目标区间 > 新题产量与速度"
+  },
+  "goal_change": "human_approval",
+  "approval_required": [
+   "根目标或练习正确率目标区间修改",
+   "考试蓝图、锚题、切分分数修改",
+   "审题标准与心理测量阈值修改",
+   "Agent 权限扩展（尤其是任何触及考试池的权限）",
+   "出科试卷发布"
+  ]
+ },
+ "verification": {
+  "independence_statement": "医学内容验证由不参与出题、调难度的主治及以上带教医师双人独立完成，依据是规培大纲与现行指南原文（非 Agent A 的生成上下文）；心理测量反指标由教学办统计负责人用学员真实作答数据和独立的临床考核结果计算，B 无法改写；审计由毕业后教育科按月独立核查蓝图与泄题。评估者和数据来源都与执行者不同。",
+  "checks": [
+   {
+    "verifier_node": "content_verify",
+    "check": "每题医学正确、答案唯一、对照大纲与指南出处、无题干暗示"
+   }
+  ]
+ },
+ "external_inputs": [
+  "学员练习作答记录",
+  "上月出科考试作答数据",
+  "带教医师 mini-CEX/DOPS 临床考核结果",
+  "现行规培大纲与临床指南",
+  "规培大纲与现行指南原文"
+ ],
+ "anchors": [
+  {
+   "node_id": "anchor_syllabus",
+   "source": "国家住院医师规范化培训内容与标准（本专业轮转细则）+ 科室指定的现行临床指南版本清单",
+   "evidence_form": "文件原文与版本号，经教学主任签认的考试蓝图（知识点×认知层次×比例）",
+   "owner": "科室教学主任",
+   "freshness_rule": "每学年复核一次；任何指南更新发布后30天内复核受影响知识点",
+   "frozen": true,
+   "max_age_days": 365,
+   "confirmation_status": "待负责人首次确认后填写 last_confirmed；未确认前不得组卷"
+  },
+  {
+   "node_id": "anchor_standard",
+   "source": "专家标准设定（改良Angoff）得到的出科合格线 + 封存锚题集 + 带教医师独立的 mini-CEX/DOPS 临床考核结果",
+   "evidence_form": "签字的标准设定记录、锚题集哈希与参数、临床考核原始评分表",
+   "owner": "出科考核小组（不含 Agent A/B 的维护者单独决定）",
+   "freshness_rule": "每学期复核合格线与锚题参数；临床考核数据按月更新，超过一个轮转周期的数据不用于一致性判断",
+   "frozen": true,
+   "max_age_days": 180,
+   "confirmation_status": "待负责人首次确认后填写 last_confirmed；未确认前不得组卷"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "anchor_syllabus",
+   "kind": "anchor",
+   "responsibility": "冻结的内容标准：规培大纲、现行指南版本与考试蓝图",
+   "owner": "科室教学主任",
+   "cadence": "每学年",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "规培大纲与现行指南原文"
+    ],
+    "outputs": [
+     "大纲与指南版本清单",
+     "考试蓝图"
+    ]
+   }
+  },
+  {
+   "id": "anchor_standard",
+   "kind": "anchor",
+   "responsibility": "冻结的结果标准：专家设定的合格线、封存锚题、独立临床考核结果",
+   "owner": "出科考核小组",
+   "cadence": "每学期",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "带教医师 mini-CEX/DOPS 临床考核结果"
+    ],
+    "outputs": [
+     "合格线与锚题集",
+     "独立临床考核结果"
+    ]
+   }
+  },
+  {
+   "id": "gen_loop",
+   "kind": "execution_loop",
+   "responsibility": "Agent A：每周按蓝图缺口生成单选题草稿（题干、选项、答案、解析、出处、知识点标签），被否决的题按理由修改",
+   "owner": "Agent A（维护人：Bruce）",
+   "cadence": "每周",
+   "cadence_tier": "fast",
+   "max_iterations": 2,
+   "optimizes": "经核验新题产出",
+   "side_effect": "internal-reversible",
+   "writes": [
+    "练习题草稿区"
+   ],
+   "evidence_sources": [
+    "LLM 生成上下文",
+    "知识点缺口清单"
+   ],
+   "contract": {
+    "inputs": [
+     "审题否决意见",
+     "知识点缺口清单"
+    ],
+    "outputs": [
+     "新题草稿批次",
+     "每周生成清单"
+    ]
+   }
+  },
+  {
+   "id": "content_verify",
+   "kind": "verification_loop",
+   "responsibility": "两名主治及以上带教医师独立审题：医学正确性、答案唯一性、出处与指南一致、无题干暗示；否决的题退回，通过的题按规则随机分入练习池或封存考试池",
+   "owner": "亚专业带教医师审题组（不含 Agent A/B 维护人）",
+   "cadence": "每批次（每周）",
+   "cadence_tier": "medium",
+   "context_scope": "fresh-independent",
+   "max_iterations": 2,
+   "side_effect": "internal-reversible",
+   "writes": [
+    "审题记录",
+    "题目分池记录"
+   ],
+   "evidence_sources": [
+    "规培大纲与现行指南原文",
+    "教科书原文"
+   ],
+   "contract": {
+    "inputs": [
+     "新题草稿批次",
+     "大纲与指南版本清单"
+    ],
+    "outputs": [
+     "审题否决意见",
+     "已核验练习题池",
+     "封存考试池候选题"
+    ]
+   }
+  },
+  {
+   "id": "difficulty_loop",
+   "kind": "execution_loop",
+   "responsibility": "Agent B：只在已核验练习池内，按批准的目标区间和幅度上限调整难度标签与推送策略，使练习正确率落在区间内；不得改动题目内容或触及考试池",
+   "owner": "Agent B（维护人：Bruce）",
+   "cadence": "每周",
+   "cadence_tier": "fast",
+   "max_iterations": 3,
+   "optimizes": "练习正确率处于批准区间",
+   "side_effect": "internal-reversible",
+   "writes": [
+    "练习池难度标签与推送策略"
+   ],
+   "evidence_sources": [
+    "学员练习作答记录"
+   ],
+   "contract": {
+    "inputs": [
+     "已核验练习题池",
+     "学员练习作答记录",
+     "批准的目标区间与调整幅度"
+    ],
+    "outputs": [
+     "难度调整记录与练习作答汇总"
+    ]
+   }
+  },
+  {
+   "id": "psych_counter",
+   "kind": "counter_metric_loop",
+   "responsibility": "心理测量反指标：区分度/点二列相关、干扰项功能、题目曝光次数、是否出现'正确率上升但区分度下降'或靠重复推送熟题达标；用锚题与独立临床考核校准题目参数",
+   "owner": "教学办统计负责人（不维护 A/B）",
+   "cadence": "每月",
+   "cadence_tier": "slow",
+   "max_iterations": 1,
+   "side_effect": "none",
+   "evidence_sources": [
+    "学员练习作答记录",
+    "上月出科考试作答数据",
+    "带教医师 mini-CEX/DOPS 临床考核结果"
+   ],
+   "contract": {
+    "inputs": [
+     "难度调整记录与练习作答汇总",
+     "合格线与锚题集",
+     "独立临床考核结果",
+     "上月出科考试作答数据"
+    ],
+    "outputs": [
+     "题目参数报告",
+     "B 调整暂停/回滚指令"
+    ]
+   }
+  },
+  {
+   "id": "blueprint_audit",
+   "kind": "audit_loop",
+   "responsibility": "月度审计：生成题与试卷的蓝图覆盖、练习池与考试池是否隔离、是否有题外泄或重复、指南版本是否过期、A 是否在刷'容易出的知识点'",
+   "owner": "医院毕业后教育科",
+   "cadence": "每月",
+   "cadence_tier": "slow",
+   "max_iterations": 1,
+   "side_effect": "none",
+   "evidence_sources": [
+    "考试蓝图",
+    "题库全量变更日志",
+    "封存池访问日志"
+   ],
+   "contract": {
+    "inputs": [
+     "每周生成清单",
+     "考试蓝图",
+     "试卷草案"
+    ],
+    "outputs": [
+     "蓝图与泄题审计报告",
+     "知识点缺口清单"
+    ]
+   }
+  },
+  {
+   "id": "exam_assembly",
+   "kind": "execution",
+   "responsibility": "组卷：只从封存考试池（未在练习中曝光、已审题、参数合格）按冻结蓝图抽题生成下月出科试卷草案；合格线引用锚点，不用正确率推算",
+   "owner": "教学秘书（组卷工具辅助）",
+   "cadence": "每月",
+   "cadence_tier": "medium",
+   "side_effect": "internal-reversible",
+   "writes": [
+    "出科试卷草案"
+   ],
+   "evidence_sources": [
+    "封存考试池"
+   ],
+   "contract": {
+    "inputs": [
+     "封存考试池候选题",
+     "题目参数报告",
+     "蓝图与泄题审计报告",
+     "仲裁记录"
+    ],
+    "outputs": [
+     "试卷草案"
+    ]
+   }
+  },
+  {
+   "id": "arbitration",
+   "kind": "arbitration",
+   "responsibility": "按冻结优先级裁决冲突，例如：B 要降难度而反指标显示区分度已低；A 的题被审题否决与产量冲突；审计发现覆盖缺口但可用题不足",
+   "owner": "科室教学主任",
+   "cadence": "按需（冲突发生时）",
+   "cadence_tier": "human",
+   "priority_policy": "医学正确性与患者安全 > 合格线有效性与考试蓝图覆盖 > 考试安全 > 区分度与公平性 > 练习正确率区间 > 产量与速度",
+   "contract": {
+    "inputs": [
+     "冲突升级单",
+     "冲突升级单"
+    ],
+    "outputs": [
+     "仲裁记录"
+    ]
+   }
+  },
+  {
+   "id": "governance_loop",
+   "kind": "governance_loop",
+   "responsibility": "季度治理：复核70%目标区间是否合理、合格判定与临床考核一致性、审题否决率与反指标趋势，只提出目标/阈值/锚点修订提案",
+   "owner": "出科考核小组",
+   "cadence": "每季度",
+   "cadence_tier": "governance",
+   "max_iterations": 1,
+   "side_effect": "none",
+   "contract": {
+    "inputs": [
+     "题目参数报告",
+     "蓝图与泄题审计报告"
+    ],
+    "outputs": [
+     "目标与阈值修订提案"
+    ]
+   }
+  },
+  {
+   "id": "human_gate",
+   "kind": "human_gate",
+   "responsibility": "联签门：审阅试卷草案、审题记录、参数与审计报告，签字发布或驳回；批准/驳回治理提案并下发 B 的目标区间与幅度上限",
+   "owner": "Bruce 与科室教学主任联签",
+   "cadence": "每月 + 按需",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "试卷草案",
+     "目标与阈值修订提案",
+     "合格线与锚题集",
+     "仲裁升级"
+    ],
+    "outputs": [
+     "签字放行单",
+     "批准的目标区间与调整幅度",
+     "驳回与终止记录"
+    ]
+   }
+  },
+  {
+   "id": "exam_release",
+   "kind": "execution",
+   "responsibility": "发布下月出科考试（高风险：影响学员出科判定）",
+   "owner": "教学秘书",
+   "cadence": "每月",
+   "cadence_tier": "medium",
+   "side_effect": "high-risk",
+   "writes": [
+    "已发布出科试卷"
+   ],
+   "contract": {
+    "inputs": [
+     "签字放行单"
+    ],
+    "outputs": [
+     "考试成绩与题目作答数据"
+    ]
+   }
+  },
+  {
+   "id": "stop_handoff",
+   "kind": "stop_handoff",
+   "responsibility": "终态归档与交接：completed/blocked/failed/budget_exhausted",
+   "owner": "Bruce 与科室教学主任",
+   "cadence": "每月",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "考试成绩与题目作答数据",
+     "驳回与终止记录"
+    ],
+    "outputs": [
+     "handoff.md"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "anchor_syllabus",
+   "to": "content_verify",
+   "relation": "anchors",
+   "artifact": "大纲与指南版本清单"
+  },
+  {
+   "from": "anchor_syllabus",
+   "to": "blueprint_audit",
+   "relation": "anchors",
+   "artifact": "考试蓝图"
+  },
+  {
+   "from": "anchor_standard",
+   "to": "psych_counter",
+   "relation": "anchors",
+   "artifact": "合格线与锚题集；独立临床考核结果"
+  },
+  {
+   "from": "anchor_standard",
+   "to": "human_gate",
+   "relation": "anchors",
+   "artifact": "合格线与锚题集（签字的标准设定记录）"
+  },
+  {
+   "from": "gen_loop",
+   "to": "content_verify",
+   "relation": "feeds",
+   "artifact": "新题草稿批次"
+  },
+  {
+   "from": "content_verify",
+   "to": "gen_loop",
+   "relation": "vetoes",
+   "artifact": "审题否决意见（错误点与指南出处）"
+  },
+  {
+   "from": "gen_loop",
+   "to": "blueprint_audit",
+   "relation": "feeds",
+   "artifact": "每周生成清单（知识点标签）"
+  },
+  {
+   "from": "blueprint_audit",
+   "to": "gen_loop",
+   "relation": "constrains",
+   "artifact": "知识点缺口清单（下周出题配额）"
+  },
+  {
+   "from": "content_verify",
+   "to": "difficulty_loop",
+   "relation": "feeds",
+   "artifact": "已核验练习题池"
+  },
+  {
+   "from": "content_verify",
+   "to": "exam_assembly",
+   "relation": "feeds",
+   "artifact": "封存考试池候选题（从未进入练习池）"
+  },
+  {
+   "from": "content_verify",
+   "to": "arbitration",
+   "relation": "escalates",
+   "artifact": "冲突升级单（否决率过高、审题分歧）"
+  },
+  {
+   "from": "difficulty_loop",
+   "to": "psych_counter",
+   "relation": "feeds",
+   "artifact": "难度调整记录与练习作答汇总"
+  },
+  {
+   "from": "psych_counter",
+   "to": "difficulty_loop",
+   "relation": "vetoes",
+   "artifact": "B 调整暂停/回滚指令（正确率升而区分度降、熟题重复推送）"
+  },
+  {
+   "from": "difficulty_loop",
+   "to": "arbitration",
+   "relation": "escalates",
+   "artifact": "冲突升级单（目标区间无法在幅度上限内达到）"
+  },
+  {
+   "from": "psych_counter",
+   "to": "exam_assembly",
+   "relation": "constrains",
+   "artifact": "题目参数报告（剔除区分度不合格或曝光题）"
+  },
+  {
+   "from": "psych_counter",
+   "to": "arbitration",
+   "relation": "escalates",
+   "artifact": "冲突升级单（反指标与练习目标冲突）"
+  },
+  {
+   "from": "psych_counter",
+   "to": "governance_loop",
+   "relation": "feeds",
+   "artifact": "题目参数报告与一致性趋势"
+  },
+  {
+   "from": "blueprint_audit",
+   "to": "exam_assembly",
+   "relation": "constrains",
+   "artifact": "蓝图与泄题审计报告"
+  },
+  {
+   "from": "blueprint_audit",
+   "to": "governance_loop",
+   "relation": "feeds",
+   "artifact": "蓝图与泄题审计报告"
+  },
+  {
+   "from": "exam_assembly",
+   "to": "blueprint_audit",
+   "relation": "feeds",
+   "artifact": "试卷草案（供泄题与覆盖核查）"
+  },
+  {
+   "from": "arbitration",
+   "to": "exam_assembly",
+   "relation": "arbitrates",
+   "artifact": "仲裁记录"
+  },
+  {
+   "from": "arbitration",
+   "to": "human_gate",
+   "relation": "escalates",
+   "artifact": "仲裁升级（需改目标或锚点的冲突）"
+  },
+  {
+   "from": "exam_assembly",
+   "to": "human_gate",
+   "relation": "feeds",
+   "artifact": "试卷草案与全部核验报告"
+  },
+  {
+   "from": "governance_loop",
+   "to": "human_gate",
+   "relation": "escalates",
+   "artifact": "目标与阈值修订提案"
+  },
+  {
+   "from": "human_gate",
+   "to": "difficulty_loop",
+   "relation": "constrains",
+   "artifact": "批准的目标区间与调整幅度"
+  },
+  {
+   "from": "human_gate",
+   "to": "exam_release",
+   "relation": "constrains",
+   "artifact": "签字放行单"
+  },
+  {
+   "from": "human_gate",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "驳回与终止记录"
+  },
+  {
+   "from": "exam_release",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "考试成绩与题目作答数据（下月作为外部输入回到反指标）"
+  },
+  {
+   "from": "arbitration",
+   "to": "gen_loop",
+   "relation": "arbitrates",
+   "artifact": "仲裁记录（审题否决与蓝图配额冲突时，按优先级定下周出题范围）"
+  }
+ ],
+ "known_gaps": [
+  "两个锚点尚无 last_confirmed：需科室教学主任/出科考核小组首次签认大纲版本、蓝图、合格线与锚题后填写；diagnose 因此报 decayed_measurement，属上线前必须由人完成的前置条件，不能由系统代填",
+  "approval.status=pending：本设计需 Bruce 与教学主任批准后才可实例化 A/B 回路"
+ ]
+}

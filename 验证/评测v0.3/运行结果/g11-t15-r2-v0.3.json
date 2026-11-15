@@ -1,0 +1,797 @@
+{
+  "schema_version": "1.1",
+  "title": "活的系统综述：每日PubMed增量 → 证据表 → 结论/网站推荐 控制架构",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "让 Bruce 维护的活系统综述在新证据出现后及时、准确地更新：证据表只收录符合预注册方案的研究，论文结论段落与网站推荐意见始终与当前证据（含偏倚风险与GRADE确定性）相符。",
+    "human_owner": "Bruce（综述负责人/通讯作者）",
+    "observable_success": "(1) 每次合并的条目可追溯到 PubMed 原始记录与全文，独立双人核查的纳入/提取一致率≥95%，不一致项全部有仲裁记录；(2) 季度召回审计中已知应纳入研究的检出率≥95%；(3) 每次结论/推荐变化都有冻结SAP下的独立复算报告、GRADE表和 Bruce 签字的变更记录，网站推荐与论文结论版本号一致；(4) 无已撤稿或重复人群研究进入合并分析。",
+    "out_of_scope": [
+      "Agent 自行修改纳入标准、检索式、分析计划或推荐阈值",
+      "未经人工签字自动改写论文结论或网站推荐",
+      "把字段格式齐全当作纳入合格或证据质量合格",
+      "对个体患者给出诊疗建议",
+      "向期刊投稿或对外发布更正声明（需 Bruce 另行决定）"
+    ],
+    "metrics": [
+      "conclusion_evidence_concordance",
+      "eligible_study_recall",
+      "inclusion_extraction_accuracy",
+      "new_eligible_studies_added",
+      "time_to_incorporate"
+    ]
+  },
+  "classification_rationale": "不是单回路：原流程只有一个反馈信号（字段格式齐全），它是最容易被刷的代理指标，且直接驱动高风险外部副作用（论文结论、公开网站推荐）。这里有多个相互作用、节奏不同的目标——每日纳入速度 vs 纳入/提取准确性 vs 检索召回 vs 结论稳定性——需要独立于 Agent A/B 的现实锚点（预注册方案、PubMed原始记录/全文、撤稿库、已知研究基准集）、反指标、仲裁和人工门；每日增量本身是有界回路，所以选 graph_plus_loop。",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "每日按冻结检索式查询 PubMed 并生成候选条目",
+      "按冻结字段模板做格式校验",
+      "独立复核纳入资格、数据提取、偏倚风险",
+      "在版本化证据表中合并已通过全部检查的条目（可回滚）",
+      "按冻结SAP复算荟萃分析并起草结论/推荐变更提议",
+      "暂停合并或暂停发布并升级"
+    ],
+    "forbidden_actions": [
+      "修改纳入/排除标准、检索式、SAP、GRADE规则或推荐阈值",
+      "未经 Bruce 签字改写论文结论段落",
+      "未经 Bruce 签字更新网站推荐意见",
+      "删除或改写已合并条目的历史版本",
+      "执行者节点修改验证、审计、反指标或锚点"
+    ]
+  },
+  "frozen_rules": [
+    "预注册方案（PICO、纳入/排除标准、检索式、SAP、GRADE与推荐阈值）冻结；只能由 Bruce 经 protocol_gate 修订并留版本记录",
+    "格式齐全只是进入核查的前置条件，不能单独触发合并",
+    "合并需同时满足：格式校验通过 + 独立资格/提取核查通过 + 反指标未亮红灯（撤稿、重复人群、预印本未同行评审）",
+    "结论段落与网站推荐任何变动必须经独立复算 + Bruce 签字；网站与论文同一版本号同步发布",
+    "Agent A/B 与验证、审计节点使用不同 owner、不同上下文、不同数据入口",
+    "证据表、结论、网站均版本化，任何发布可一键回滚到上一签字版本"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 11,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 60
+  },
+  "failure_policy": {
+    "failed": "当日增量全部留在暂存区不合并，结论与网站保持上一签字版本，生成失败报告交 Bruce",
+    "blocked": "锚点过期、全文不可得或核查分歧未解时，条目标记 pending，不进入合并分析，升级到仲裁/Bruce",
+    "budget_exhausted": "停止当日处理，保留暂存队列与已完成核查记录，次日从断点继续",
+    "rollback": "发现已发布结论错误（撤稿、提取错误）时立即回滚网站到上一签字版本并通知 Bruce"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed：结论/推荐变更经独立复算和 Bruce 签字后同步发布，或当日无需变更且全部候选已有核查结论",
+      "blocked：锚点过期或核查分歧未经仲裁",
+      "failed：复算失败、发布失败或发现已发布内容错误并已回滚",
+      "budget_exhausted：当日预算耗尽，队列保留"
+    ],
+    "artifact": "handoff.md（当日增量清单、核查与仲裁记录、复算报告、签字/回滚记录、未决事项）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce（可指定方法学合作者代理日常分歧，结论层面仍归 Bruce）",
+      "priority_policy": "患者安全与结论正确性 > 方案一致性（纳入/提取准确、撤稿/重复排除） > 检索召回 > 更新及时性 > 处理吞吐量"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "纳入标准/检索式/SAP/GRADE阈值修订",
+      "论文结论段落变更",
+      "网站推荐意见变更"
+    ]
+  },
+  "verification": {
+    "independence_statement": "资格与提取核查由不同 owner 的独立审阅者（另一模型实例，fresh 上下文 + 人工方法学审阅者抽检）直接从 PubMed 原始记录和全文重新判定，不读取 Agent A 的判定理由；结论复算由独立统计审阅者用冻结SAP和冻结复算脚本完成；召回审计使用 Agent A 从未接触的已知研究基准集与试验注册库。",
+    "checks": [
+      {
+        "verifier_node": "eligibility_verify",
+        "check": "纳入资格、数据提取、偏倚风险与原始记录/全文一致；双人一致率≥95%"
+      },
+      {
+        "verifier_node": "format_check",
+        "check": "字段完整性与取值格式（仅作前置条件）"
+      },
+      {
+        "verifier_node": "synthesis_verify",
+        "check": "按冻结SAP独立复算效应量与GRADE，结论措辞与结果方向/确定性一致"
+      }
+    ]
+  },
+  "external_inputs": [
+    "PubMed 每日新增检索结果",
+    "全文PDF"
+  ],
+  "anchors": [
+    {
+      "node_id": "protocol_anchor",
+      "source": "预注册方案（PROSPERO/OSF）：PICO、纳入/排除标准、检索式、SAP、GRADE与推荐阈值",
+      "evidence_form": "带时间戳的注册版本号与冻结文件哈希",
+      "owner": "Bruce",
+      "freshness_rule": "每次运行核对哈希与注册版本一致；修订只能经 protocol_gate；每季度确认一次仍为现行版本",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15",
+      "confirmation_note": "设计日基线；首次运行前由 Bruce 核对注册号与哈希"
+    },
+    {
+      "node_id": "source_record_anchor",
+      "source": "PubMed 原始记录（PMID元数据）、出版方全文，以及撤稿/更正数据库（Retraction Watch/Crossref）",
+      "evidence_form": "按 PMID/DOI 直接抓取的原始记录与全文快照、撤稿状态查询结果",
+      "owner": "独立核查流程（非 Agent A/B）",
+      "freshness_rule": "每次核查当日现取；撤稿状态每周对全部已合并条目复查",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "known_item_anchor",
+      "source": "人工手检+ClinicalTrials.gov/ICTRP+关键综述参考文献得到的已知应纳入研究基准集（对 Agent A 隐藏）",
+      "evidence_form": "带 PMID 清单的冻结基准集及其构建记录",
+      "owner": "Bruce（或其指定的方法学合作者）",
+      "freshness_rule": "每季度扩充一次；Agent A 不得读取",
+      "frozen": true,
+      "max_age_days": 120,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "protocol_anchor",
+      "kind": "anchor",
+      "responsibility": "冻结的预注册方案：纳入标准、检索式、SAP、GRADE与推荐阈值",
+      "owner": "Bruce",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "经签字的方案修订"
+        ],
+        "outputs": [
+          "冻结方案与哈希"
+        ]
+      }
+    },
+    {
+      "id": "source_record_anchor",
+      "kind": "anchor",
+      "responsibility": "独立于 Agent A 的 PubMed 原始记录、全文与撤稿状态",
+      "owner": "独立核查流程",
+      "cadence_tier": "fast",
+      "contract": {
+        "inputs": [
+          "PMID/DOI"
+        ],
+        "outputs": [
+          "原始记录与全文快照",
+          "撤稿状态"
+        ]
+      }
+    },
+    {
+      "id": "known_item_anchor",
+      "kind": "anchor",
+      "responsibility": "对 Agent A 隐藏的已知应纳入研究基准集",
+      "owner": "Bruce（或指定方法学合作者）",
+      "cadence_tier": "governance",
+      "contract": {
+        "inputs": [
+          "人工手检结果"
+        ],
+        "outputs": [
+          "已知研究基准集"
+        ]
+      }
+    },
+    {
+      "id": "search_screen",
+      "kind": "execution_loop",
+      "responsibility": "Agent A：每日按冻结检索式检索 PubMed、初筛、提取数据，生成候选条目放入暂存队列（不可直接写证据表）",
+      "owner": "Agent A",
+      "cadence": "daily 每日",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "optimizes": "new_eligible_studies_added",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "candidate_queue"
+      ],
+      "evidence_sources": [
+        "PubMed 每日新增检索结果",
+        "全文PDF"
+      ],
+      "contract": {
+        "inputs": [
+          "冻结方案",
+          "PubMed 每日新增检索结果",
+          "退回清单",
+          "检索暂停/修正指令",
+          "仲裁决定"
+        ],
+        "outputs": [
+          "候选条目（含提取数据与纳入理由）",
+          "每日纳入日志"
+        ]
+      }
+    },
+    {
+      "id": "format_check",
+      "kind": "verification_loop",
+      "responsibility": "Agent B：确定性校验字段完整与格式；只做前置条件，不能单独放行合并",
+      "owner": "Agent B（确定性模板校验）",
+      "context_scope": "fresh-independent",
+      "cadence": "daily 每日",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "evidence_sources": [
+        "冻结字段模板"
+      ],
+      "contract": {
+        "inputs": [
+          "候选条目",
+          "冻结方案"
+        ],
+        "outputs": [
+          "格式合格条目",
+          "格式否决清单"
+        ]
+      }
+    },
+    {
+      "id": "eligibility_verify",
+      "kind": "verification_loop",
+      "responsibility": "独立第二审阅者：从原始记录与全文重新判定纳入资格、核对提取数据与偏倚风险，不读 Agent A 的理由",
+      "owner": "独立审阅者（另一模型实例 + 方法学合作者抽检）",
+      "context_scope": "fresh-independent",
+      "cadence": "daily 每日",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "evidence_sources": [
+        "原始记录与全文快照",
+        "冻结方案与哈希"
+      ],
+      "contract": {
+        "inputs": [
+          "格式合格条目",
+          "冻结方案",
+          "原始记录与全文快照"
+        ],
+        "outputs": [
+          "核查通过条目",
+          "退回清单",
+          "分歧条目"
+        ]
+      }
+    },
+    {
+      "id": "counter_metric",
+      "kind": "counter_metric_loop",
+      "responsibility": "反指标：盯住纳入数量这一代理——假纳入率（核查推翻率）、撤稿/更正、重复人群与多次发表、预印本、单日纳入异常激增、结论翻转频率",
+      "owner": "反指标监控（独立脚本，Bruce 设阈值）",
+      "cadence": "daily 每日",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "撤稿状态",
+        "每日纳入日志"
+      ],
+      "contract": {
+        "inputs": [
+          "每日纳入日志",
+          "撤稿状态",
+          "冻结方案"
+        ],
+        "outputs": [
+          "反指标红黄灯报告"
+        ]
+      }
+    },
+    {
+      "id": "recall_audit",
+      "kind": "audit_loop",
+      "responsibility": "召回与漂移审计：用隐藏基准集测检索召回，检查 PubMed 索引/MeSH 变化、检索式漂移、已合并条目撤稿复查",
+      "owner": "方法学审计者（非 Agent A/B）",
+      "cadence": "weekly 每周",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "已知研究基准集",
+        "撤稿状态"
+      ],
+      "contract": {
+        "inputs": [
+          "已知研究基准集",
+          "每日纳入日志",
+          "撤稿状态"
+        ],
+        "outputs": [
+          "召回审计报告",
+          "检索暂停/修正指令"
+        ]
+      }
+    },
+    {
+      "id": "arbitration",
+      "kind": "arbitration",
+      "responsibility": "按优先级裁决检查者之间及检查者与执行者的分歧（资格分歧、反指标红灯、召回不足）",
+      "owner": "Bruce（日常分歧可由指定方法学合作者代理）",
+      "priority_policy": "患者安全与结论正确性 > 方案一致性 > 检索召回 > 更新及时性 > 吞吐量",
+      "cadence": "on demand 按需（human）",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "分歧条目",
+          "反指标红黄灯报告",
+          "召回审计报告",
+          "复算分歧"
+        ],
+        "outputs": [
+          "仲裁决定"
+        ]
+      }
+    },
+    {
+      "id": "evidence_merge",
+      "kind": "execution",
+      "responsibility": "唯一写者：把通过全部检查的条目合并进版本化证据表（可回滚）",
+      "owner": "合并服务（确定性）",
+      "cadence": "daily 每日",
+      "cadence_tier": "medium",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "evidence_table"
+      ],
+      "contract": {
+        "inputs": [
+          "核查通过条目",
+          "仲裁决定",
+          "反指标红黄灯报告"
+        ],
+        "outputs": [
+          "证据表新版本"
+        ]
+      }
+    },
+    {
+      "id": "synthesis_update",
+      "kind": "synthesis",
+      "responsibility": "按冻结SAP更新荟萃分析与GRADE，起草结论段落与网站推荐的变更提议（只是提议）",
+      "owner": "综合Agent",
+      "cadence": "daily 每日（仅证据表有新版本时）",
+      "cadence_tier": "medium",
+      "side_effect": "none",
+      "writes": [
+        "conclusion_draft"
+      ],
+      "evidence_sources": [
+        "证据表新版本"
+      ],
+      "contract": {
+        "inputs": [
+          "证据表新版本",
+          "冻结方案"
+        ],
+        "outputs": [
+          "结论/推荐变更提议"
+        ]
+      }
+    },
+    {
+      "id": "synthesis_verify",
+      "kind": "verification_loop",
+      "responsibility": "独立统计审阅：用冻结复算脚本独立复算效应量、异质性、GRADE；检查措辞是否超出证据、是否被单一新研究过度翻转；抽样回溯原始记录",
+      "owner": "独立统计/方法学审阅者",
+      "context_scope": "fresh-independent",
+      "cadence": "per release 每版",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "evidence_sources": [
+        "冻结方案与哈希",
+        "原始记录与全文快照",
+        "冻结复算脚本"
+      ],
+      "contract": {
+        "inputs": [
+          "结论/推荐变更提议",
+          "冻结方案",
+          "原始记录与全文快照"
+        ],
+        "outputs": [
+          "独立复算报告",
+          "复算分歧"
+        ]
+      }
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "季度治理：审视纳入标准、检索式、反指标阈值、推荐阈值是否仍合适；只提出修订建议",
+      "owner": "Bruce + 方法学合作者",
+      "cadence": "quarterly 每季度",
+      "cadence_tier": "governance",
+      "contract": {
+        "inputs": [
+          "召回审计报告",
+          "反指标红黄灯报告"
+        ],
+        "outputs": [
+          "方案修订提议",
+          "阈值调整"
+        ]
+      }
+    },
+    {
+      "id": "protocol_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 批准/拒绝方案修订，修订后在注册平台更新并重新冻结",
+      "owner": "Bruce",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "方案修订提议"
+        ],
+        "outputs": [
+          "经签字的方案修订"
+        ]
+      }
+    },
+    {
+      "id": "conclusion_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 审阅变更提议、独立复算报告与仲裁记录，签字批准或驳回结论/推荐变更",
+      "owner": "Bruce",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "结论/推荐变更提议",
+          "独立复算报告",
+          "仲裁决定",
+          "冻结方案"
+        ],
+        "outputs": [
+          "签字批准记录"
+        ]
+      }
+    },
+    {
+      "id": "manuscript_update",
+      "kind": "execution",
+      "responsibility": "按签字版本更新论文结论段落，写入版本号与变更说明",
+      "owner": "发布服务",
+      "side_effect": "high-risk",
+      "writes": [
+        "manuscript_conclusion"
+      ],
+      "contract": {
+        "inputs": [
+          "签字批准记录",
+          "结论/推荐变更提议"
+        ],
+        "outputs": [
+          "论文结论新版本"
+        ]
+      }
+    },
+    {
+      "id": "website_publish",
+      "kind": "execution",
+      "responsibility": "按同一签字版本更新网站推荐意见，带版本号、日期与证据确定性；保留一键回滚",
+      "owner": "发布服务",
+      "side_effect": "high-risk",
+      "writes": [
+        "website_recommendation"
+      ],
+      "contract": {
+        "inputs": [
+          "签字批准记录",
+          "论文结论新版本"
+        ],
+        "outputs": [
+          "网站推荐新版本"
+        ]
+      }
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "收尾：写 handoff.md（增量、核查、仲裁、复算、签字/回滚、未决项），按四态结束当日运行",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "网站推荐新版本",
+          "仲裁决定",
+          "证据表新版本"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "protocol_anchor",
+      "to": "search_screen",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "format_check",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "eligibility_verify",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "counter_metric",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "synthesis_update",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "synthesis_verify",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "conclusion_gate",
+      "relation": "anchors",
+      "artifact": "冻结方案"
+    },
+    {
+      "from": "source_record_anchor",
+      "to": "eligibility_verify",
+      "relation": "anchors",
+      "artifact": "原始记录与全文快照"
+    },
+    {
+      "from": "source_record_anchor",
+      "to": "synthesis_verify",
+      "relation": "anchors",
+      "artifact": "原始记录与全文快照"
+    },
+    {
+      "from": "source_record_anchor",
+      "to": "counter_metric",
+      "relation": "anchors",
+      "artifact": "撤稿状态"
+    },
+    {
+      "from": "source_record_anchor",
+      "to": "recall_audit",
+      "relation": "anchors",
+      "artifact": "撤稿状态"
+    },
+    {
+      "from": "known_item_anchor",
+      "to": "recall_audit",
+      "relation": "anchors",
+      "artifact": "已知研究基准集"
+    },
+    {
+      "from": "search_screen",
+      "to": "format_check",
+      "relation": "feeds",
+      "artifact": "候选条目（含提取数据与纳入理由）"
+    },
+    {
+      "from": "search_screen",
+      "to": "counter_metric",
+      "relation": "feeds",
+      "artifact": "每日纳入日志"
+    },
+    {
+      "from": "search_screen",
+      "to": "recall_audit",
+      "relation": "feeds",
+      "artifact": "每日纳入日志"
+    },
+    {
+      "from": "format_check",
+      "to": "eligibility_verify",
+      "relation": "feeds",
+      "artifact": "格式合格条目（不含 Agent A 纳入理由）"
+    },
+    {
+      "from": "format_check",
+      "to": "evidence_merge",
+      "relation": "vetoes",
+      "artifact": "格式否决清单"
+    },
+    {
+      "from": "eligibility_verify",
+      "to": "evidence_merge",
+      "relation": "feeds",
+      "artifact": "核查通过条目"
+    },
+    {
+      "from": "eligibility_verify",
+      "to": "search_screen",
+      "relation": "constrains",
+      "artifact": "退回清单"
+    },
+    {
+      "from": "eligibility_verify",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "分歧条目"
+    },
+    {
+      "from": "counter_metric",
+      "to": "evidence_merge",
+      "relation": "constrains",
+      "artifact": "反指标红黄灯报告（红灯暂停合并）"
+    },
+    {
+      "from": "counter_metric",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "反指标红黄灯报告"
+    },
+    {
+      "from": "counter_metric",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "反指标红黄灯报告（趋势汇总）"
+    },
+    {
+      "from": "recall_audit",
+      "to": "search_screen",
+      "relation": "constrains",
+      "artifact": "检索暂停/修正指令（仅限冻结方案内的执行修正）"
+    },
+    {
+      "from": "recall_audit",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "召回审计报告"
+    },
+    {
+      "from": "recall_audit",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "召回审计报告"
+    },
+    {
+      "from": "arbitration",
+      "to": "evidence_merge",
+      "relation": "arbitrates",
+      "artifact": "仲裁决定"
+    },
+    {
+      "from": "arbitration",
+      "to": "search_screen",
+      "relation": "arbitrates",
+      "artifact": "仲裁决定"
+    },
+    {
+      "from": "arbitration",
+      "to": "conclusion_gate",
+      "relation": "escalates",
+      "artifact": "仲裁决定"
+    },
+    {
+      "from": "arbitration",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "仲裁决定（未决项）"
+    },
+    {
+      "from": "evidence_merge",
+      "to": "synthesis_update",
+      "relation": "feeds",
+      "artifact": "证据表新版本"
+    },
+    {
+      "from": "evidence_merge",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "证据表新版本"
+    },
+    {
+      "from": "synthesis_update",
+      "to": "synthesis_verify",
+      "relation": "feeds",
+      "artifact": "结论/推荐变更提议"
+    },
+    {
+      "from": "synthesis_update",
+      "to": "conclusion_gate",
+      "relation": "feeds",
+      "artifact": "结论/推荐变更提议"
+    },
+    {
+      "from": "synthesis_verify",
+      "to": "conclusion_gate",
+      "relation": "constrains",
+      "artifact": "独立复算报告（未通过则不得签字）"
+    },
+    {
+      "from": "synthesis_verify",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "复算分歧"
+    },
+    {
+      "from": "governance",
+      "to": "protocol_gate",
+      "relation": "escalates",
+      "artifact": "方案修订提议"
+    },
+    {
+      "from": "governance",
+      "to": "counter_metric",
+      "relation": "constrains",
+      "artifact": "阈值调整（经 Bruce 认可）"
+    },
+    {
+      "from": "protocol_gate",
+      "to": "protocol_anchor",
+      "relation": "revises",
+      "artifact": "经签字的方案修订"
+    },
+    {
+      "from": "conclusion_gate",
+      "to": "manuscript_update",
+      "relation": "constrains",
+      "artifact": "签字批准记录"
+    },
+    {
+      "from": "conclusion_gate",
+      "to": "website_publish",
+      "relation": "constrains",
+      "artifact": "签字批准记录"
+    },
+    {
+      "from": "synthesis_update",
+      "to": "manuscript_update",
+      "relation": "feeds",
+      "artifact": "结论/推荐变更提议（已签字版本）"
+    },
+    {
+      "from": "manuscript_update",
+      "to": "website_publish",
+      "relation": "feeds",
+      "artifact": "论文结论新版本"
+    },
+    {
+      "from": "website_publish",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "网站推荐新版本"
+    }
+  ],
+  "design_answers": {
+    "结果": "论文结论与网站推荐与当前合格证据一致；Bruce 负责；证据=独立复算报告+签字记录+召回审计",
+    "职责": "Agent A 动手检索提取；Agent B 只做格式前置；独立审阅者核资格/提取；统计审阅者复算结论；反指标与召回审计找便宜胜利；Bruce 仲裁并签字",
+    "防作弊": "最易刷的是『格式齐全』和『新增纳入数』；由核查推翻率、撤稿/重复人群、召回率、结论翻转频率拆穿",
+    "扎根": "预注册方案、PubMed原始记录/全文/撤稿库、对 Agent A 隐藏的已知研究基准集",
+    "冻结": "纳入标准、检索式、SAP、GRADE/推荐阈值、合并条件、发布需签字",
+    "冲突": "安全与结论正确 > 方案一致 > 召回 > 及时 > 吞吐",
+    "收尾": "四态停机；任何异常保留上一签字版本，可回滚；交接 handoff.md 给 Bruce",
+    "对原流程的关键修改": "取消『格式齐全即自动合并、自动改结论和网站』：合并需独立资格核查+反指标放行；结论与网站变更只产生提议，经独立复算和 Bruce 签字才发布"
+  }
+}

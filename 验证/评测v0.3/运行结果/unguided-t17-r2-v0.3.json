@@ -1,0 +1,522 @@
+{
+  "schema_version": "1.1",
+  "title": "规培住院医师题库：周度出题 + 难度调节 + 月度出科考试 控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "存在两个不同节律的循环（周度出题/难度调节的练习循环，月度出科考试的高利害发布），且'平均正确率稳定在70%'是可被操纵的代理指标：B 可以靠把题改简单/改难、甚至改坏题干来逼近70%，而题目又直接进入影响学员出科结论的考试。因此需要图：医学正确性独立核验、心理测量反指标（区分度、大纲覆盖）、练习题与考试题隔离、以及考试前人工审批门；不能是单一 loop 或线性流程。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "为规培住院医师提供医学上正确、覆盖培训大纲、难度适中的单选题练习，并产出能有效区分掌握程度的出科考试卷；70%平均正确率是练习题库的调节目标，而不是考试质量本身。",
+    "human_owner": "Bruce（题库系统负责人）；出科考试最终由科室教学负责人/带教专家签发",
+    "observable_success": "每周新题经独立医学审核差错率为0后才入练习库；练习库平均正确率落在60–80%区间且区分度(点二列相关)≥0.2的题占比≥80%；每月出科试卷覆盖大纲规定知识点、所有考题均未在练习中曝光或已人工确认可复用，并在考前由人工签发。",
+    "metrics": [
+      "练习平均正确率",
+      "题目区分度",
+      "医学正确性差错率",
+      "大纲覆盖率",
+      "考题曝光率",
+      "出科成绩与带教评价一致性"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "生成候选题草稿",
+      "在练习题库内调整练习题难度(修改干扰项/情境复杂度)",
+      "计算正确率与区分度等统计",
+      "组卷生成候选出科试卷草案",
+      "标记可疑题目并退回审核"
+    ],
+    "forbidden_actions": [
+      "未经人工签发将任何题目写入出科考试卷",
+      "为凑70%正确率而修改正确答案、删除正确选项或引入医学错误",
+      "绕过医学审核直接上线新题",
+      "将学员个人成绩/身份信息带出系统或用于题目生成提示",
+      "改变出科考试及格线或评分规则",
+      "将考试题提前暴露在练习库"
+    ]
+  },
+  "frozen_rules": [
+    "医学内容以国家住院医师规范化培训内容与标准、现行指南和教材为准，Agent不得自定义标准答案",
+    "70%正确率只作用于练习题库的难度调节，不作为出科考试题目的选择或修改目标",
+    "出科考试题与本月练习题集合隔离；练习中曝光过的题不得原样进入同批学员考试",
+    "任何题目修改后须重新通过医学正确性核验才能生效",
+    "出科试卷必须经人工(带教专家+Bruce)签发；Agent无签发权",
+    "学员答题数据仅以去标识化聚合统计形式供B使用"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 7,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 100
+  },
+  "failure_policy": "任一题目医学核验未通过则退回A修订，最多2次，仍不通过则弃题；难度调节连续2周使区分度下降或正确率偏离区间，则冻结B的自动调节、回滚到上一版练习库并升级给Bruce；组卷不满足大纲覆盖或曝光隔离则不出卷，转人工组卷；任何时候发现已上线题含医学错误，立即下线并通知受影响学员成绩复核。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "医学核验连续发现系统性错误(同一知识点≥3题错误)",
+      "B的调节出现修改答案/引入错误或区分度持续下降",
+      "出科试卷大纲覆盖不足或曝光隔离失败",
+      "答题样本量不足以估计难度(单题作答<30人次)",
+      "预算或重试次数耗尽"
+    ],
+    "artifact": "交接包：问题题目清单及审核意见、难度调节前后版本差异与统计、试卷覆盖/曝光报告、建议的人工处理措施"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "规培培训内容与标准/科室出科大纲",
+    "学员去标识化答题记录",
+    "现行临床指南与教材",
+    "带教专家人工签发意见"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_curriculum",
+      "source": "国家住院医师规范化培训内容与标准及本科室出科考核大纲",
+      "evidence_form": "知识点清单与权重表（版本号+日期）",
+      "owner": "科室教学负责人",
+      "freshness_rule": "大纲或标准更新时重新确认；至少每季度确认一次",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_clinical_truth",
+      "source": "现行临床指南、规划教材与带教专家判断",
+      "evidence_form": "每题标准答案的出处引用(指南名称/版本/条目)",
+      "owner": "带教专家组",
+      "freshness_rule": "指南更新时复核涉及题目；每月抽检",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_competence",
+      "source": "带教老师对学员的出科临床能力评价(Mini-CEX/DOPS等)",
+      "evidence_form": "去标识化的学员能力评级，与考试成绩做一致性比对",
+      "owner": "带教专家组",
+      "freshness_rule": "每个出科周期收集一次",
+      "frozen": true,
+      "max_age_days": 45,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_curriculum",
+      "kind": "anchor",
+      "responsibility": "提供冻结的出科大纲知识点与权重",
+      "owner": "科室教学负责人",
+      "contract": {
+        "inputs": [
+          "规培培训内容与标准/科室出科大纲"
+        ],
+        "outputs": [
+          "知识点清单与权重"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_clinical_truth",
+      "kind": "anchor",
+      "responsibility": "提供医学标准答案的权威依据",
+      "owner": "带教专家组",
+      "contract": {
+        "inputs": [
+          "现行临床指南与教材"
+        ],
+        "outputs": [
+          "指南/教材出处库"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_competence",
+      "kind": "anchor",
+      "responsibility": "提供独立于题库的学员能力外部证据，用于检验考试是否测到真实能力",
+      "owner": "带教专家组",
+      "contract": {
+        "inputs": [
+          "带教专家人工签发意见"
+        ],
+        "outputs": [
+          "去标识化能力评级"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "agent_a_generate",
+      "kind": "execution_loop",
+      "responsibility": "Agent A 每周按大纲覆盖缺口生成新单选题，每题附标准答案出处与目标知识点",
+      "owner": "Agent A",
+      "max_iterations": 3,
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "知识点清单与权重",
+          "覆盖缺口报告",
+          "核验退回意见"
+        ],
+        "outputs": [
+          "候选题批次(含出处)"
+        ]
+      },
+      "evidence_sources": [
+        "anchor_curriculum"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "候选题草稿区"
+      ]
+    },
+    {
+      "id": "medical_verify",
+      "kind": "verification_loop",
+      "responsibility": "独立核验每道新题及每道被调整题的医学正确性、唯一正确答案、干扰项合理性，对照指南出处",
+      "owner": "独立核验Agent + 带教专家抽检",
+      "context_scope": "fresh-independent",
+      "max_iterations": 2,
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "候选题批次(含出处)",
+          "调整后练习题",
+          "指南/教材出处库"
+        ],
+        "outputs": [
+          "通过题目",
+          "退回意见",
+          "核验差错率"
+        ]
+      },
+      "evidence_sources": [
+        "anchor_clinical_truth"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "练习题库(仅入库动作)"
+      ]
+    },
+    {
+      "id": "agent_b_adjust",
+      "kind": "execution_loop",
+      "responsibility": "Agent B 根据去标识化答题统计调整练习题难度，使练习库平均正确率趋向70%；只能改情境复杂度/干扰项，不得改正确答案",
+      "owner": "Agent B",
+      "optimizes": "练习平均正确率",
+      "max_iterations": 4,
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "学员去标识化答题记录",
+          "题目统计报告",
+          "冻结/回滚指令"
+        ],
+        "outputs": [
+          "调整后练习题",
+          "调整日志"
+        ]
+      },
+      "evidence_sources": [
+        "学员去标识化答题记录"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "练习题调整草稿区"
+      ]
+    },
+    {
+      "id": "psychometric_counter",
+      "kind": "counter_metric_loop",
+      "responsibility": "与B配对的反指标：计算每题区分度、难度分布、大纲覆盖率，检测B是否以牺牲区分度或覆盖来凑70%；超阈值时冻结B并回滚",
+      "owner": "心理测量统计Agent",
+      "context_scope": "fresh-independent",
+      "optimizes": "题目区分度",
+      "max_iterations": 4,
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "学员去标识化答题记录",
+          "调整日志",
+          "知识点清单与权重"
+        ],
+        "outputs": [
+          "题目统计报告",
+          "覆盖缺口报告",
+          "冻结/回滚指令"
+        ]
+      },
+      "evidence_sources": [
+        "学员去标识化答题记录",
+        "anchor_curriculum"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "统计报告"
+      ]
+    },
+    {
+      "id": "exam_assemble",
+      "kind": "synthesis",
+      "responsibility": "每月从已核验、未向本批学员曝光的题池中按大纲权重组出科试卷草案，并给出覆盖与曝光报告",
+      "owner": "组卷Agent",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "通过题目",
+          "题目统计报告",
+          "知识点清单与权重"
+        ],
+        "outputs": [
+          "出科试卷草案",
+          "覆盖与曝光报告"
+        ]
+      },
+      "evidence_sources": [
+        "anchor_curriculum"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "试卷草案区"
+      ]
+    },
+    {
+      "id": "exam_audit",
+      "kind": "audit_loop",
+      "responsibility": "考后审计：比对考试成绩与带教能力评价的一致性，识别异常题(区分度为负、全对/全错)，反馈给大纲覆盖与出题",
+      "owner": "独立审计Agent + 带教专家",
+      "context_scope": "fresh-independent",
+      "max_iterations": 1,
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "考试成绩去标识化统计",
+          "去标识化能力评级"
+        ],
+        "outputs": [
+          "考试效度审计报告"
+        ]
+      },
+      "evidence_sources": [
+        "anchor_competence"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "审计报告"
+      ]
+    },
+    {
+      "id": "human_exam_gate",
+      "kind": "human_gate",
+      "responsibility": "带教专家与Bruce审阅试卷草案、覆盖与曝光报告后签发或驳回；只有此节点能把题写入出科考试",
+      "owner": "Bruce + 带教专家",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "出科试卷草案",
+          "覆盖与曝光报告",
+          "核验差错率"
+        ],
+        "outputs": [
+          "签发的出科试卷",
+          "驳回意见"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "出科考试卷"
+      ]
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "监控各循环是否越权、超预算、触发停止条件；执行冻结规则并升级给人",
+      "owner": "Bruce",
+      "max_iterations": 1,
+      "cadence_tier": "governance",
+      "contract": {
+        "inputs": [
+          "冻结/回滚指令",
+          "考试效度审计报告",
+          "核验差错率"
+        ],
+        "outputs": [
+          "治理决定",
+          "停止交接触发"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时打包交接给Bruce",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "停止交接触发"
+        ],
+        "outputs": [
+          "交接包"
+        ]
+      },
+      "side_effect": "none"
+    }
+  ],
+  "edges": [
+    {
+      "from": "anchor_curriculum",
+      "to": "agent_a_generate",
+      "relation": "anchors",
+      "artifact": "知识点清单与权重"
+    },
+    {
+      "from": "anchor_curriculum",
+      "to": "psychometric_counter",
+      "relation": "anchors",
+      "artifact": "知识点清单与权重"
+    },
+    {
+      "from": "anchor_curriculum",
+      "to": "exam_assemble",
+      "relation": "anchors",
+      "artifact": "知识点清单与权重"
+    },
+    {
+      "from": "anchor_clinical_truth",
+      "to": "medical_verify",
+      "relation": "anchors",
+      "artifact": "指南/教材出处库"
+    },
+    {
+      "from": "anchor_competence",
+      "to": "exam_audit",
+      "relation": "anchors",
+      "artifact": "去标识化能力评级"
+    },
+    {
+      "from": "agent_a_generate",
+      "to": "medical_verify",
+      "relation": "feeds",
+      "artifact": "候选题批次(含出处)"
+    },
+    {
+      "from": "medical_verify",
+      "to": "agent_a_generate",
+      "relation": "revises",
+      "artifact": "退回意见"
+    },
+    {
+      "from": "agent_b_adjust",
+      "to": "medical_verify",
+      "relation": "feeds",
+      "artifact": "调整后练习题"
+    },
+    {
+      "from": "medical_verify",
+      "to": "agent_b_adjust",
+      "relation": "revises",
+      "artifact": "退回意见"
+    },
+    {
+      "from": "psychometric_counter",
+      "to": "agent_b_adjust",
+      "relation": "constrains",
+      "artifact": "冻结/回滚指令"
+    },
+    {
+      "from": "agent_b_adjust",
+      "to": "psychometric_counter",
+      "relation": "observes",
+      "artifact": "调整日志"
+    },
+    {
+      "from": "psychometric_counter",
+      "to": "agent_a_generate",
+      "relation": "revises",
+      "artifact": "覆盖缺口报告"
+    },
+    {
+      "from": "medical_verify",
+      "to": "exam_assemble",
+      "relation": "feeds",
+      "artifact": "通过题目"
+    },
+    {
+      "from": "psychometric_counter",
+      "to": "exam_assemble",
+      "relation": "feeds",
+      "artifact": "题目统计报告"
+    },
+    {
+      "from": "exam_assemble",
+      "to": "human_exam_gate",
+      "relation": "feeds",
+      "artifact": "出科试卷草案"
+    },
+    {
+      "from": "medical_verify",
+      "to": "human_exam_gate",
+      "relation": "feeds",
+      "artifact": "核验差错率"
+    },
+    {
+      "from": "human_exam_gate",
+      "to": "exam_assemble",
+      "relation": "vetoes",
+      "artifact": "驳回意见"
+    },
+    {
+      "from": "human_exam_gate",
+      "to": "exam_audit",
+      "relation": "feeds",
+      "artifact": "签发的出科试卷"
+    },
+    {
+      "from": "exam_audit",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "考试效度审计报告"
+    },
+    {
+      "from": "psychometric_counter",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "冻结/回滚指令"
+    },
+    {
+      "from": "medical_verify",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "核验差错率"
+    },
+    {
+      "from": "governance",
+      "to": "agent_b_adjust",
+      "relation": "constrains",
+      "artifact": "治理决定"
+    },
+    {
+      "from": "governance",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "停止交接触发"
+    }
+  ],
+  "notes": {
+    "date": "2026-11-15",
+    "key_risks": [
+      "Goodhart：70%正确率可通过降低题目质量或改坏题达成，故B与区分度/覆盖反指标配对",
+      "高利害：原设计'调整后直接进下月出科考试'被改为必须经医学核验+人工签发",
+      "题目曝光：练习题与考试题隔离",
+      "节律错配：周度练习循环与月度考试分层，月度考试由审计循环用外部能力证据回检",
+      "数据隐私：B只用去标识化聚合数据"
+    ]
+  }
+}

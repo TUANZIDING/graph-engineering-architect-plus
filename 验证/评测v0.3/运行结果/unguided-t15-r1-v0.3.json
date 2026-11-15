@@ -1,0 +1,689 @@
+{
+  "schema_version": "1.1",
+  "title": "活的系统综述：每日 PubMed 增量纳入与结论/推荐更新控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "原流程把『字段格式齐全』当作合并、改结论、改网站推荐的唯一闸门：格式检查不能验证纳入是否符合方案、数据提取是否正确、偏倚风险与证据确定性是否改变，且结论和公开推荐是高风险、对外可见的副作用。需要多角色分工（检索、筛选、提取、独立复核、合成、证据分级、人工签发）组成的图，并包含每日检索循环、独立双人复核循环、反指标循环（防止只追求纳入数量/更新频率）和撤稿/勘误审计循环，因此选 graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在不降低方法学质量的前提下，持续把符合预注册方案的新证据纳入系统综述，并仅在证据确实改变时、经人工签发后更新论文结论与网站推荐。",
+    "human_owner": "Bruce",
+    "observable_success": "每条合并入证据表的研究都有：方案纳入标准逐条判定记录、双人独立提取一致性记录、偏倚风险评估；结论段落和网站推荐的每次变更都有对应的合成/GRADE 变更说明和 Bruce 的签发记录，且可回滚到上一版本。",
+    "metrics": [
+      "eligibility_precision",
+      "extraction_agreement",
+      "conclusion_change_traceability",
+      "time_to_inclusion_days",
+      "included_study_count"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "检索 PubMed 并写入候选队列",
+      "对候选做标题摘要/全文筛选并记录理由",
+      "提取数据到暂存区（staging）",
+      "独立复核与一致性计算",
+      "运行荟萃分析/敏感性分析生成草稿",
+      "生成结论与推荐变更草稿和 diff",
+      "在 Bruce 签发后合并证据表并发布版本"
+    ],
+    "forbidden_actions": [
+      "仅凭字段格式齐全自动合并证据表",
+      "未经人工签发自动修改论文结论段落",
+      "未经人工签发自动发布或修改网站推荐意见",
+      "修改预注册方案中的纳入/排除标准或主要结局",
+      "删除或覆盖历史版本与审计日志",
+      "以单一研究或预印本直接翻转推荐方向"
+    ]
+  },
+  "frozen_rules": [
+    "PROSPERO/预注册方案的 PICO、纳入排除标准、主要结局与分析计划为锚点，Agent 不可修改；修改需 Bruce 发起方案修订并记录。",
+    "证据表只有 merge_controller 一个写者；所有 Agent 只能写 staging。",
+    "格式完整性检查只是必要条件，不是合并的充分条件。",
+    "论文结论与网站推荐只能在 human_gate 签发后变更，且每次变更附带证据变化说明与回滚点。",
+    "复核者必须与提取者上下文独立（fresh-independent），不得读取提取者的理由。",
+    "检测到撤稿、勘误或关注声明的研究立即冻结其对结论的贡献并上报。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 10,
+    "max_concurrency": 4,
+    "max_retries": 2,
+    "max_cost_units": 100
+  },
+  "failure_policy": "任一节点连续失败超过 max_retries、双人提取不一致无法仲裁、合成结果显示结论方向或 GRADE 等级可能改变、发现撤稿/勘误、或 PubMed 检索异常（结果数为 0 或超过日均 5 倍）时：停止自动推进，保留 staging，证据表与网站维持上一已签发版本，交接 Bruce。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "结论方向、效应量显著性或 GRADE 确定性等级发生改变",
+      "网站推荐意见需要修改",
+      "双人复核分歧经仲裁仍未解决",
+      "发现纳入研究被撤稿/勘误/关注声明",
+      "检索量异常或检索式失效",
+      "预算或重试次数耗尽",
+      "需要修改方案锚点"
+    ],
+    "artifact": "handoff_packet：变更 diff（证据表/分析/结论/推荐）、新增研究清单及纳入判定、一致性报告、偏倚与 GRADE 变化、风险与建议、回滚点"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "PubMed E-utilities 每日结果",
+    "预注册方案文档",
+    "Retraction Watch/PubMed 撤稿与勘误标记"
+  ],
+  "anchors": [
+    {
+      "node_id": "protocol_anchor",
+      "source": "预注册方案（PROSPERO 注册版 + 已批准修订）",
+      "evidence_form": "PICO、纳入排除标准、主要/次要结局、分析计划与 GRADE 规则的冻结版本",
+      "owner": "Bruce",
+      "freshness_rule": "仅在 Bruce 签发方案修订时更新；每次运行校验版本号",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "signed_baseline_anchor",
+      "source": "上一版 Bruce 签发的证据表、分析结果、结论段落与网站推荐",
+      "evidence_form": "带版本号与哈希的快照",
+      "owner": "Bruce",
+      "freshness_rule": "每次 human_gate 签发后生成新快照；作为 diff 与回滚基线",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "protocol_anchor",
+      "kind": "anchor",
+      "responsibility": "提供冻结的方案标准与分析计划",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "预注册方案文档"
+        ],
+        "outputs": [
+          "protocol_criteria"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "signed_baseline_anchor",
+      "kind": "anchor",
+      "responsibility": "提供上一已签发版本作为对照与回滚点",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "signed_release"
+        ],
+        "outputs": [
+          "baseline_snapshot"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "daily_search_loop",
+      "kind": "execution_loop",
+      "responsibility": "Agent A：每日按冻结检索式查询 PubMed，去重（PMID/DOI/标题），记录检索日志与命中数，写入候选队列",
+      "owner": "Agent A",
+      "max_iterations": 1,
+      "contract": {
+        "inputs": [
+          "PubMed E-utilities 每日结果",
+          "protocol_criteria"
+        ],
+        "outputs": [
+          "candidate_records",
+          "search_log"
+        ]
+      },
+      "writes": [
+        "candidate_queue"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "fast",
+      "evidence_sources": [
+        "PubMed"
+      ]
+    },
+    {
+      "id": "screening",
+      "kind": "execution",
+      "responsibility": "按纳入排除标准逐条做标题摘要与全文筛选，输出纳入/排除及理由（不是只看格式）",
+      "owner": "Agent A",
+      "contract": {
+        "inputs": [
+          "candidate_records",
+          "protocol_criteria"
+        ],
+        "outputs": [
+          "eligibility_decisions"
+        ]
+      },
+      "writes": [
+        "staging_screening"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "fast",
+      "evidence_sources": [
+        "全文/摘要"
+      ]
+    },
+    {
+      "id": "extraction",
+      "kind": "execution",
+      "responsibility": "对拟纳入研究提取结局数据、样本量、效应量、偏倚风险条目到 staging",
+      "owner": "Agent A",
+      "contract": {
+        "inputs": [
+          "eligibility_decisions",
+          "protocol_criteria"
+        ],
+        "outputs": [
+          "extraction_record_A"
+        ]
+      },
+      "writes": [
+        "staging_extraction"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "fast",
+      "evidence_sources": [
+        "全文"
+      ]
+    },
+    {
+      "id": "format_check",
+      "kind": "verification_loop",
+      "responsibility": "Agent B 原职责保留：字段格式、必填项、单位与取值范围检查；不合格退回 extraction（只是必要条件）",
+      "owner": "Agent B",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "extraction_record_A"
+        ],
+        "outputs": [
+          "format_report"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "fast",
+      "evidence_sources": [
+        "staging_extraction schema"
+      ]
+    },
+    {
+      "id": "independent_review_loop",
+      "kind": "verification_loop",
+      "responsibility": "独立复核者在不看 Agent A 理由的情况下重新判定纳入资格并对关键字段双人提取，计算一致性；分歧送仲裁",
+      "owner": "Agent C（独立复核）",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "candidate_records",
+          "protocol_criteria",
+          "format_report"
+        ],
+        "outputs": [
+          "extraction_record_B",
+          "agreement_report"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "medium",
+      "evidence_sources": [
+        "原始全文（独立读取）",
+        "protocol_criteria"
+      ]
+    },
+    {
+      "id": "discrepancy_arbitration",
+      "kind": "arbitration",
+      "responsibility": "按方案规则裁决 A/B 分歧；无法裁决的升级给 Bruce",
+      "owner": "Agent D（仲裁）",
+      "priority_policy": "方案锚点 > 原始全文 > 任一提取者判断；不确定即升级",
+      "contract": {
+        "inputs": [
+          "extraction_record_A",
+          "extraction_record_B",
+          "agreement_report",
+          "protocol_criteria"
+        ],
+        "outputs": [
+          "reconciled_record",
+          "unresolved_items"
+        ]
+      },
+      "writes": [
+        "staging_reconciled"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "integrity_audit_loop",
+      "kind": "audit_loop",
+      "responsibility": "每周及每次合并前检查已纳入与待纳入研究的撤稿/勘误/关注声明、重复发表与预印本转正式发表",
+      "owner": "Agent E（审计）",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "Retraction Watch/PubMed 撤稿与勘误标记",
+          "baseline_snapshot",
+          "reconciled_record"
+        ],
+        "outputs": [
+          "integrity_flags"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "medium",
+      "evidence_sources": [
+        "Retraction Watch",
+        "PubMed 更正标记"
+      ]
+    },
+    {
+      "id": "evidence_synthesis",
+      "kind": "synthesis",
+      "responsibility": "在 staging 副本上重跑预设荟萃分析与敏感性分析，更新 GRADE 判定，生成相对基线的效应量/确定性/结论方向变化报告及结论与推荐修改草稿",
+      "owner": "Agent F（合成）",
+      "contract": {
+        "inputs": [
+          "reconciled_record",
+          "baseline_snapshot",
+          "protocol_criteria",
+          "integrity_flags"
+        ],
+        "outputs": [
+          "synthesis_diff",
+          "draft_conclusion",
+          "draft_recommendation"
+        ]
+      },
+      "writes": [
+        "staging_analysis"
+      ],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "counter_metric_loop",
+      "kind": "counter_metric_loop",
+      "responsibility": "对冲『纳入数量/更新速度』指标：监控纳入精确率抽样、一致性趋势、结论翻转频率、因单研究导致的波动；异常时收紧并上报",
+      "owner": "Agent G（反指标）",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "optimizes": "eligibility_precision",
+      "contract": {
+        "inputs": [
+          "agreement_report",
+          "synthesis_diff",
+          "search_log"
+        ],
+        "outputs": [
+          "quality_alerts"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "governance_loop",
+      "kind": "governance_loop",
+      "responsibility": "汇总预算、重试、异常与冻结规则执行情况，决定继续/暂停，组装交接包",
+      "owner": "Bruce",
+      "max_iterations": 1,
+      "contract": {
+        "inputs": [
+          "quality_alerts",
+          "integrity_flags",
+          "unresolved_items",
+          "search_log"
+        ],
+        "outputs": [
+          "governance_decision"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "human_signoff_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 审阅变更 diff：批准合并证据表；结论方向/GRADE/推荐变化需逐条签发；可拒绝或要求修改",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "synthesis_diff",
+          "draft_conclusion",
+          "draft_recommendation",
+          "agreement_report",
+          "integrity_flags",
+          "governance_decision"
+        ],
+        "outputs": [
+          "signoff_decision"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "merge_controller",
+      "kind": "execution",
+      "responsibility": "唯一写者：按签发决定把 reconciled_record 合并入证据表，更新论文结论段落与网站推荐，打版本号与回滚点",
+      "owner": "Agent B（发布执行）",
+      "contract": {
+        "inputs": [
+          "signoff_decision",
+          "reconciled_record",
+          "draft_conclusion",
+          "draft_recommendation"
+        ],
+        "outputs": [
+          "signed_release"
+        ]
+      },
+      "writes": [
+        "evidence_table",
+        "manuscript_conclusion",
+        "website_recommendation",
+        "release_log"
+      ],
+      "side_effect": "high-risk",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时冻结发布、保留 staging、向 Bruce 交付 handoff_packet",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "governance_decision",
+          "unresolved_items",
+          "quality_alerts",
+          "integrity_flags"
+        ],
+        "outputs": [
+          "handoff_packet"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {
+      "from": "protocol_anchor",
+      "to": "daily_search_loop",
+      "relation": "anchors",
+      "artifact": "protocol_criteria"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "screening",
+      "relation": "anchors",
+      "artifact": "protocol_criteria"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "extraction",
+      "relation": "anchors",
+      "artifact": "protocol_criteria"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "independent_review_loop",
+      "relation": "anchors",
+      "artifact": "protocol_criteria"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "discrepancy_arbitration",
+      "relation": "anchors",
+      "artifact": "protocol_criteria"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "evidence_synthesis",
+      "relation": "anchors",
+      "artifact": "protocol_criteria"
+    },
+    {
+      "from": "signed_baseline_anchor",
+      "to": "evidence_synthesis",
+      "relation": "anchors",
+      "artifact": "baseline_snapshot"
+    },
+    {
+      "from": "signed_baseline_anchor",
+      "to": "integrity_audit_loop",
+      "relation": "anchors",
+      "artifact": "baseline_snapshot"
+    },
+    {
+      "from": "daily_search_loop",
+      "to": "screening",
+      "relation": "feeds",
+      "artifact": "candidate_records"
+    },
+    {
+      "from": "daily_search_loop",
+      "to": "independent_review_loop",
+      "relation": "feeds",
+      "artifact": "candidate_records"
+    },
+    {
+      "from": "daily_search_loop",
+      "to": "counter_metric_loop",
+      "relation": "observes",
+      "artifact": "search_log"
+    },
+    {
+      "from": "daily_search_loop",
+      "to": "governance_loop",
+      "relation": "feeds",
+      "artifact": "search_log"
+    },
+    {
+      "from": "screening",
+      "to": "extraction",
+      "relation": "feeds",
+      "artifact": "eligibility_decisions"
+    },
+    {
+      "from": "extraction",
+      "to": "format_check",
+      "relation": "feeds",
+      "artifact": "extraction_record_A"
+    },
+    {
+      "from": "format_check",
+      "to": "extraction",
+      "relation": "revises",
+      "artifact": "format_report"
+    },
+    {
+      "from": "format_check",
+      "to": "independent_review_loop",
+      "relation": "feeds",
+      "artifact": "format_report"
+    },
+    {
+      "from": "extraction",
+      "to": "discrepancy_arbitration",
+      "relation": "feeds",
+      "artifact": "extraction_record_A"
+    },
+    {
+      "from": "independent_review_loop",
+      "to": "discrepancy_arbitration",
+      "relation": "verifies",
+      "artifact": "extraction_record_B"
+    },
+    {
+      "from": "independent_review_loop",
+      "to": "discrepancy_arbitration",
+      "relation": "feeds",
+      "artifact": "agreement_report"
+    },
+    {
+      "from": "independent_review_loop",
+      "to": "counter_metric_loop",
+      "relation": "feeds",
+      "artifact": "agreement_report"
+    },
+    {
+      "from": "independent_review_loop",
+      "to": "human_signoff_gate",
+      "relation": "feeds",
+      "artifact": "agreement_report"
+    },
+    {
+      "from": "discrepancy_arbitration",
+      "to": "integrity_audit_loop",
+      "relation": "feeds",
+      "artifact": "reconciled_record"
+    },
+    {
+      "from": "discrepancy_arbitration",
+      "to": "evidence_synthesis",
+      "relation": "feeds",
+      "artifact": "reconciled_record"
+    },
+    {
+      "from": "discrepancy_arbitration",
+      "to": "merge_controller",
+      "relation": "feeds",
+      "artifact": "reconciled_record"
+    },
+    {
+      "from": "discrepancy_arbitration",
+      "to": "governance_loop",
+      "relation": "escalates",
+      "artifact": "unresolved_items"
+    },
+    {
+      "from": "discrepancy_arbitration",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "unresolved_items"
+    },
+    {
+      "from": "integrity_audit_loop",
+      "to": "evidence_synthesis",
+      "relation": "constrains",
+      "artifact": "integrity_flags"
+    },
+    {
+      "from": "integrity_audit_loop",
+      "to": "governance_loop",
+      "relation": "feeds",
+      "artifact": "integrity_flags"
+    },
+    {
+      "from": "integrity_audit_loop",
+      "to": "human_signoff_gate",
+      "relation": "feeds",
+      "artifact": "integrity_flags"
+    },
+    {
+      "from": "integrity_audit_loop",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "integrity_flags"
+    },
+    {
+      "from": "evidence_synthesis",
+      "to": "counter_metric_loop",
+      "relation": "feeds",
+      "artifact": "synthesis_diff"
+    },
+    {
+      "from": "evidence_synthesis",
+      "to": "human_signoff_gate",
+      "relation": "feeds",
+      "artifact": "synthesis_diff"
+    },
+    {
+      "from": "evidence_synthesis",
+      "to": "human_signoff_gate",
+      "relation": "feeds",
+      "artifact": "draft_conclusion"
+    },
+    {
+      "from": "evidence_synthesis",
+      "to": "human_signoff_gate",
+      "relation": "feeds",
+      "artifact": "draft_recommendation"
+    },
+    {
+      "from": "evidence_synthesis",
+      "to": "merge_controller",
+      "relation": "feeds",
+      "artifact": "draft_conclusion"
+    },
+    {
+      "from": "evidence_synthesis",
+      "to": "merge_controller",
+      "relation": "feeds",
+      "artifact": "draft_recommendation"
+    },
+    {
+      "from": "counter_metric_loop",
+      "to": "governance_loop",
+      "relation": "feeds",
+      "artifact": "quality_alerts"
+    },
+    {
+      "from": "counter_metric_loop",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "quality_alerts"
+    },
+    {
+      "from": "governance_loop",
+      "to": "human_signoff_gate",
+      "relation": "feeds",
+      "artifact": "governance_decision"
+    },
+    {
+      "from": "governance_loop",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "governance_decision"
+    },
+    {
+      "from": "human_signoff_gate",
+      "to": "merge_controller",
+      "relation": "constrains",
+      "artifact": "signoff_decision"
+    },
+    {
+      "from": "human_signoff_gate",
+      "to": "evidence_synthesis",
+      "relation": "revises",
+      "artifact": "signoff_decision"
+    },
+    {
+      "from": "merge_controller",
+      "to": "signed_baseline_anchor",
+      "relation": "feeds",
+      "artifact": "signed_release"
+    }
+  ]
+}

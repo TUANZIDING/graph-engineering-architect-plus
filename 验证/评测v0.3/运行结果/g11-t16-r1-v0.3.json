@@ -1,0 +1,627 @@
+{
+  "schema_version": "1.1",
+  "title": "Issue-to-PyPI agent control architecture for an open-source Python statistics package",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "design_date": "2026-11-15",
+  "root_goal": {
+    "statement": "Valid bug reports on the statistics package get fixed and shipped to PyPI faster, without releasing numerically wrong, API-breaking or supply-chain-unsafe versions.",
+    "human_owner": "Bruce",
+    "observable_success": "For agent-ok issues: fix merged and released with the repro test passing; zero post-release regressions traced to agent PRs over a rolling 90 days (no yanks, no reverted agent PRs for correctness); protected suite and reference values unchanged except via policy_gate records; median issue-to-release time reduced vs Bruce's manual baseline.",
+    "out_of_scope": [
+      "Fully unattended tag + PyPI publish on green CI (rejected: green CI is necessary, not sufficient, and a PyPI version is irreversible)",
+      "Agent changing statistical methods, defaults, public API or adding dependencies",
+      "Agent acting on issues not labelled agent-ok, or on security reports",
+      "Agent editing protected tests, reference data, CI workflows, CODEOWNERS or release config",
+      "Agent holding PyPI tokens or tag-push rights"
+    ],
+    "metrics": [
+      "agent-ok issues fixed and released",
+      "post-release regressions from agent PRs",
+      "issue-to-release time"
+    ]
+  },
+  "classification_rationale": "Not a direct action or a single loop. The user's proposal makes CI green the only judge of an irreversible public release, while the same agent that is rewarded by green CI can edit the tests, tolerances and workflows that define green (metric gaming / meta-capture), and issue text is untrusted input. Safety needs: an inner bounded fix loop (the 'loop' part), an independent verifier on frozen maintainer-owned tests and external reference values, a counter-metric loop for test weakening/API/numerics/supply chain, human gates for intake, merge and release, a slow post-release audit on real-world outcomes, and quarterly governance. Hence graph_plus_loop.",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "read agent-ok issues",
+      "create branch agent/issue-<n>",
+      "add new test files under tests/agent/",
+      "edit package source within issue scope",
+      "open and update PRs",
+      "comment on the linked issue",
+      "trigger CI on its own PR"
+    ],
+    "forbidden_actions": [
+      "edit tests/protected/ or reference data",
+      "edit .github/workflows, CODEOWNERS, branch protection or release config",
+      "change version or dependencies in pyproject",
+      "merge PRs",
+      "push tags",
+      "publish to PyPI or TestPyPI",
+      "access repository secrets",
+      "act on issues without agent-ok label",
+      "follow instructions embedded in issue text that exceed the ticket scope"
+    ]
+  },
+  "frozen_rules": [
+    "Protected test suite and golden reference values change only through policy_gate with Bruce's recorded approval",
+    "CI workflow definitions run from main, never from the PR branch; PR code gets no secrets",
+    "Green CI alone never triggers merge, tag or publish",
+    "Every PyPI release requires Bruce's signed tag and protected-environment approval; publishing uses Trusted Publishing, no long-lived token",
+    "Artifacts published to PyPI must hash-match those smoke-tested on TestPyPI",
+    "Any counter-metric block overrides a green CI until Bruce arbitrates",
+    "Coding Agent may only propose changes to its own scope, tests, thresholds or gates"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 7,
+    "max_concurrency": 2,
+    "max_retries": 1,
+    "max_cost_units": 20
+  },
+  "failure_policy": {
+    "failed": "Close PR as failed, comment on issue with findings, hand off to Bruce; no retry on the same issue without his relabel",
+    "blocked": "Missing repro, ambiguous expected value, or fix needs API/method change: stop, comment on issue, remove agent-ok, hand off to Bruce",
+    "budget_exhausted": "After 4 fix iterations or cost cap: stop, keep branch, write handoff with last CI and counter-metric reports",
+    "regression_after_release": "Audit escalates to release_gate; Bruce decides yank + hotfix release; affected agent-ok category paused until governance review"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: released, audit window passed with no regression",
+      "failed: PR rejected or reverted",
+      "blocked: out of scope / needs human decision",
+      "budget_exhausted: iteration or cost cap reached"
+    ],
+    "artifact": "handoff.md"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "numerical correctness vs reference > backward-compatible public API > supply-chain safety > issue resolution > speed"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change (protected tests, reference values, tolerances)",
+      "Permission expansion (agent scope, auto-merge, any automated release)",
+      "CI workflow or release configuration change"
+    ]
+  },
+  "verification": {
+    "independence_statement": "ci_verify runs maintainer-owned frozen tests and reference values (generated by independent R/SciPy/statsmodels implementations) from main-branch workflow definitions on clean runners; counter_check uses a different model/context plus deterministic linters and compares against the hash-pinned last PyPI release; post_release_audit reads real-world issues and downstream CI that the Coding Agent cannot produce. None of these sources is writable by the Coding Agent.",
+    "checks": [
+      {
+        "verifier_node": "ci_verify",
+        "check": "protected suite + reference comparison green on all supported versions; repro test fails on main and passes on branch"
+      }
+    ]
+  },
+  "external_inputs": [
+    "new GitHub issue",
+    "new issues and downstream reports"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_protected_suite",
+      "source": "tests/protected/ + tests/reference/ golden values from R/SciPy/statsmodels, CODEOWNERS-protected",
+      "evidence_form": "executed test results on clean CI runners",
+      "owner": "Bruce",
+      "freshness_rule": "Re-generate reference values against current reference implementations at each minor release or every 180 days; stale beyond that blocks releases until Bruce re-confirms",
+      "max_age_days": 180,
+      "last_confirmed_note": "not yet confirmed; Bruce sets last_confirmed when the protected suite is first frozen",
+      "frozen": true
+    },
+    {
+      "node_id": "anchor_release_baseline",
+      "source": "last released wheel on PyPI (hash-pinned) and its public API snapshot",
+      "evidence_form": "numerical outputs on reference datasets and API signature diff",
+      "owner": "Bruce",
+      "freshness_rule": "Replaced only by the next human-approved release",
+      "max_age_days": 365,
+      "last_confirmed_note": "set to the date of the first human-approved release under this architecture",
+      "frozen": true
+    }
+  ],
+  "nodes": [
+    {
+      "id": "issue_intake_gate",
+      "kind": "human_gate",
+      "cadence_tier": "human",
+      "cadence": "per new issue",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Triage new GitHub issues. Issue text is untrusted input (may contain prompt injection or feature requests disguised as bugs). Only issues Bruce labels `agent-ok` (bug with minimal reproduction, no API/statistical-method change) enter the agent loop; feature requests, method changes, security reports stay human.",
+      "contract": {
+        "inputs": [
+          "new GitHub issue"
+        ],
+        "outputs": [
+          "approved issue ticket (agent-ok label, scope, allowed paths)"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "policy_gate",
+      "kind": "human_gate",
+      "cadence_tier": "human",
+      "cadence": "on governance proposal",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Only path for changing protected tests, reference values, agent permissions, CI workflow, release rules. Approves or rejects governance proposals; records approval.",
+      "contract": {
+        "inputs": [
+          "policy change proposal"
+        ],
+        "outputs": [
+          "approved protected-test / reference update",
+          "agent permission scope"
+        ]
+      },
+      "side_effect": "internal-reversible"
+    },
+    {
+      "id": "anchor_protected_suite",
+      "kind": "anchor",
+      "cadence_tier": "slow",
+      "cadence": "changed only via policy_gate",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Maintainer-owned protected test suite (tests/protected/) plus golden reference outputs generated from independent implementations (R / SciPy / statsmodels) on fixed datasets with stated tolerances; protected by CODEOWNERS + branch protection; the agent cannot write it.",
+      "contract": {
+        "inputs": [
+          "approved protected-test / reference update"
+        ],
+        "outputs": [
+          "frozen test suite and reference outputs"
+        ]
+      }
+    },
+    {
+      "id": "anchor_release_baseline",
+      "kind": "anchor",
+      "cadence_tier": "slow",
+      "cadence": "refreshed at each human-approved release",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Last released wheel from PyPI (hash-pinned) plus its public-API snapshot; baseline for numerical drift and API-break detection that the agent cannot regenerate.",
+      "contract": {
+        "inputs": [
+          "published PyPI release"
+        ],
+        "outputs": [
+          "last released wheel numerics + public API snapshot"
+        ]
+      }
+    },
+    {
+      "id": "fix_loop",
+      "kind": "execution_loop",
+      "cadence_tier": "fast",
+      "cadence": "per iteration on one issue",
+      "owner": "Coding Agent",
+      "max_iterations": 4,
+      "responsibility": "For one agent-ok issue: write a failing reproduction test (new file under tests/agent/ only), implement the minimal fix on branch agent/issue-<n>, open a PR linked to the issue. May not touch tests/protected/, reference data, .github/workflows, CODEOWNERS, pyproject version, dependencies list, secrets; never tags, merges or publishes.",
+      "contract": {
+        "inputs": [
+          "approved issue ticket",
+          "failing CI log",
+          "counter-metric findings",
+          "agent permission scope"
+        ],
+        "outputs": [
+          "PR head commit",
+          "PR diff"
+        ]
+      },
+      "optimizes": "agent-ok issues fixed and released",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "agent/issue-<n> branch"
+      ],
+      "evidence_sources": [
+        "issue text",
+        "repository source",
+        "agent-written reproduction test"
+      ]
+    },
+    {
+      "id": "ci_verify",
+      "kind": "verification_loop",
+      "cadence_tier": "medium",
+      "cadence": "per PR commit and per main commit",
+      "owner": "Protected GitHub Actions workflow (maintainer-owned, read-only to agent)",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "responsibility": "Run the frozen protected suite + reference comparisons + the agent's repro test on clean runners across supported Python/NumPy versions, using the workflow from main (pull_request_target-safe config, no secrets exposed to PR code). Also confirm the repro test fails on main and passes on the branch.",
+      "contract": {
+        "inputs": [
+          "PR head commit",
+          "frozen test suite and reference outputs"
+        ],
+        "outputs": [
+          "CI verdict",
+          "required status check result",
+          "failing CI log"
+        ]
+      },
+      "evidence_sources": [
+        "frozen test suite and reference outputs",
+        "clean CI runner execution logs"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "counter_check",
+      "kind": "counter_metric_loop",
+      "cadence_tier": "medium",
+      "cadence": "per PR",
+      "owner": "Independent review agent + deterministic diff linters (separate model/context from Coding Agent)",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "responsibility": "Catch the cheap green: deleted/skipped/xfail tests, loosened tolerances, changed reference data, special-casing the issue's input, public-API breaks, numerical drift vs last release on reference datasets, coverage drop, new dependencies, network/subprocess/secret access, performance regression, diff size beyond scope.",
+      "contract": {
+        "inputs": [
+          "PR diff",
+          "frozen test suite and reference outputs",
+          "last released wheel numerics + public API snapshot"
+        ],
+        "outputs": [
+          "counter-metric findings",
+          "counter-metric block"
+        ]
+      },
+      "evidence_sources": [
+        "last released wheel numerics + public API snapshot",
+        "git diff vs main",
+        "benchmark harness"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "arbitration",
+      "kind": "arbitration",
+      "cadence_tier": "human",
+      "cadence": "per PR with conflicting signals",
+      "owner": "Bruce (maintainer)",
+      "priority_policy": "numerical correctness vs reference > backward-compatible public API > supply-chain safety > issue resolution > speed; any counter-metric block overrides a green CI",
+      "responsibility": "Settle conflicts between green CI and counter-metric findings, or between fixing the issue and preserving API; produce a decision record.",
+      "contract": {
+        "inputs": [
+          "CI verdict",
+          "counter-metric findings"
+        ],
+        "outputs": [
+          "arbitration decision record"
+        ]
+      }
+    },
+    {
+      "id": "merge_gate",
+      "kind": "human_gate",
+      "cadence_tier": "human",
+      "cadence": "per PR",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Review PR, CI verdict, counter-metric report and arbitration record; merge (squash) or reject. Branch protection requires both required checks green and maintainer approval.",
+      "contract": {
+        "inputs": [
+          "required status check result",
+          "counter-metric block",
+          "arbitration decision record"
+        ],
+        "outputs": [
+          "merged commit on main + merge approval"
+        ]
+      },
+      "side_effect": "internal-reversible"
+    },
+    {
+      "id": "release_candidate",
+      "kind": "execution",
+      "cadence_tier": "medium",
+      "cadence": "per release batch",
+      "owner": "Release workflow (CI, no PyPI token)",
+      "responsibility": "Build sdist/wheels from merged main, generate changelog from merged PRs, upload to TestPyPI, pip-install in clean envs and run smoke + reference tests against the installed artifact.",
+      "contract": {
+        "inputs": [
+          "merged commit on main"
+        ],
+        "outputs": [
+          "TestPyPI build + clean-install smoke report + changelog"
+        ]
+      },
+      "side_effect": "internal-reversible",
+      "writes": [
+        "TestPyPI"
+      ]
+    },
+    {
+      "id": "release_gate",
+      "kind": "human_gate",
+      "cadence_tier": "human",
+      "cadence": "per release batch",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Decide whether to release, choose version (SemVer), sign tag, approve the protected `pypi` GitHub environment. The agent never holds tag-push rights or a PyPI token.",
+      "contract": {
+        "inputs": [
+          "TestPyPI build + clean-install smoke report + changelog",
+          "CI status on main tagged commit",
+          "yank / hotfix recommendation"
+        ],
+        "outputs": [
+          "signed tag + protected-environment approval",
+          "published PyPI release (approved as new baseline)"
+        ]
+      }
+    },
+    {
+      "id": "publish",
+      "kind": "execution",
+      "cadence_tier": "medium",
+      "cadence": "per approved tag",
+      "owner": "Release workflow via PyPI Trusted Publishing (OIDC)",
+      "responsibility": "Upload the exact artifacts verified on TestPyPI (hash match) to PyPI, create GitHub release. Irreversible: a version number can never be reused on PyPI.",
+      "contract": {
+        "inputs": [
+          "signed tag + protected-environment approval"
+        ],
+        "outputs": [
+          "published PyPI release"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "PyPI project"
+      ]
+    },
+    {
+      "id": "post_release_audit",
+      "kind": "audit_loop",
+      "cadence_tier": "slow",
+      "cadence": "weekly + 72h after each release",
+      "owner": "Audit agent (separate from Coding Agent) reporting to Bruce",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "responsibility": "Watch real-world outcome: new regression issues referencing the release, downstream/reverse-dependency CI breakage, install failures across platforms, agent-PR revert rate, how often agent PRs touched tests, anchor freshness. Recommend yank/hotfix to release_gate; feed trends to governance.",
+      "contract": {
+        "inputs": [
+          "published PyPI release",
+          "new issues and downstream reports"
+        ],
+        "outputs": [
+          "yank / hotfix recommendation",
+          "weekly audit report",
+          "release audit closure"
+        ]
+      },
+      "evidence_sources": [
+        "GitHub issues after release",
+        "downstream CI / reverse dependencies",
+        "PyPI download/install reports"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "cadence_tier": "governance",
+      "cadence": "quarterly",
+      "owner": "Bruce (maintainer)",
+      "max_iterations": 1,
+      "responsibility": "Review whether agent scope, protected suite, tolerances, release cadence and the human-gated release policy still fit; propose changes (e.g. widening agent-ok categories) only via policy_gate.",
+      "contract": {
+        "inputs": [
+          "weekly audit report"
+        ],
+        "outputs": [
+          "policy change proposal"
+        ]
+      }
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "cadence_tier": "human",
+      "cadence": "on terminal state",
+      "owner": "Bruce (maintainer)",
+      "responsibility": "Collect terminal states: issue closed by release, PR rejected, loop exhausted/blocked, yank done; write handoff with links to issue, PR, CI run, reports, decision records.",
+      "contract": {
+        "inputs": [
+          "iteration budget exhausted / out-of-scope report",
+          "rejected PR record",
+          "release record",
+          "release audit closure"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "issue_intake_gate",
+      "to": "fix_loop",
+      "relation": "feeds",
+      "artifact": "approved issue ticket (agent-ok label, scope, allowed paths)"
+    },
+    {
+      "from": "issue_intake_gate",
+      "to": "fix_loop",
+      "relation": "constrains",
+      "artifact": "scope label + allowed file paths"
+    },
+    {
+      "from": "policy_gate",
+      "to": "anchor_protected_suite",
+      "relation": "revises",
+      "artifact": "approved protected-test / reference update"
+    },
+    {
+      "from": "policy_gate",
+      "to": "fix_loop",
+      "relation": "constrains",
+      "artifact": "agent permission scope"
+    },
+    {
+      "from": "anchor_protected_suite",
+      "to": "ci_verify",
+      "relation": "anchors",
+      "artifact": "frozen test suite and reference outputs"
+    },
+    {
+      "from": "anchor_protected_suite",
+      "to": "counter_check",
+      "relation": "anchors",
+      "artifact": "frozen test suite and reference outputs"
+    },
+    {
+      "from": "anchor_release_baseline",
+      "to": "counter_check",
+      "relation": "anchors",
+      "artifact": "last released wheel numerics + public API snapshot"
+    },
+    {
+      "from": "fix_loop",
+      "to": "ci_verify",
+      "relation": "feeds",
+      "artifact": "PR head commit"
+    },
+    {
+      "from": "fix_loop",
+      "to": "counter_check",
+      "relation": "feeds",
+      "artifact": "PR diff"
+    },
+    {
+      "from": "ci_verify",
+      "to": "fix_loop",
+      "relation": "revises",
+      "artifact": "failing CI log"
+    },
+    {
+      "from": "counter_check",
+      "to": "fix_loop",
+      "relation": "revises",
+      "artifact": "counter-metric findings"
+    },
+    {
+      "from": "ci_verify",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "required status check result"
+    },
+    {
+      "from": "counter_check",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "counter-metric block"
+    },
+    {
+      "from": "ci_verify",
+      "to": "arbitration",
+      "relation": "feeds",
+      "artifact": "CI verdict"
+    },
+    {
+      "from": "counter_check",
+      "to": "arbitration",
+      "relation": "feeds",
+      "artifact": "counter-metric findings"
+    },
+    {
+      "from": "arbitration",
+      "to": "merge_gate",
+      "relation": "arbitrates",
+      "artifact": "arbitration decision record"
+    },
+    {
+      "from": "fix_loop",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "iteration budget exhausted / out-of-scope report"
+    },
+    {
+      "from": "merge_gate",
+      "to": "release_candidate",
+      "relation": "constrains",
+      "artifact": "merged commit on main + merge approval"
+    },
+    {
+      "from": "merge_gate",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "rejected PR record"
+    },
+    {
+      "from": "release_candidate",
+      "to": "release_gate",
+      "relation": "feeds",
+      "artifact": "TestPyPI build + clean-install smoke report + changelog"
+    },
+    {
+      "from": "ci_verify",
+      "to": "release_gate",
+      "relation": "vetoes",
+      "artifact": "CI status on main tagged commit"
+    },
+    {
+      "from": "release_gate",
+      "to": "publish",
+      "relation": "constrains",
+      "artifact": "signed tag + protected-environment approval"
+    },
+    {
+      "from": "release_gate",
+      "to": "anchor_release_baseline",
+      "relation": "revises",
+      "artifact": "published PyPI release (approved as new baseline)"
+    },
+    {
+      "from": "publish",
+      "to": "post_release_audit",
+      "relation": "feeds",
+      "artifact": "published PyPI release"
+    },
+    {
+      "from": "publish",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "release record"
+    },
+    {
+      "from": "post_release_audit",
+      "to": "release_gate",
+      "relation": "escalates",
+      "artifact": "yank / hotfix recommendation"
+    },
+    {
+      "from": "post_release_audit",
+      "to": "governance",
+      "relation": "feeds",
+      "artifact": "weekly audit report"
+    },
+    {
+      "from": "post_release_audit",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "release audit closure"
+    },
+    {
+      "from": "governance",
+      "to": "policy_gate",
+      "relation": "escalates",
+      "artifact": "policy change proposal"
+    }
+  ],
+  "notes_for_user": "Push-back for Bruce: auto tag + PyPI publish on green CI is not recommended. The agent can do triage-scoped fixing, PR, CI, counter-checks, TestPyPI build and changelog automatically, leaving you two short human decisions (merge, release). Any later widening (e.g. auto-merge for docs-only PRs) goes through quarterly governance and your explicit approval.",
+  "self_check": {
+    "validate": "PASS (structure only), 2 rounds",
+    "diagnose_today": "2026-11-15",
+    "diagnose_residual": "decayed_measurement x2: anchors have max_age_days but no last_confirmed, because the protected suite/reference values and release baseline do not yet exist as frozen artifacts; deliberately not fabricated. Bruce sets last_confirmed when he freezes them. Until then state stays designed, not approved."
+  }
+}

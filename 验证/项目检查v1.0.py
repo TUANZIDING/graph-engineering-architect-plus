@@ -26,13 +26,13 @@ def check(ok: bool, msg: str) -> None:
 
 
 print("1. 回归测试")
-for t in ("回归测试v1.0.py", "回归测试v1.1.py", "回归测试v1.2.py"):
+for t in ("回归测试v1.0.py", "回归测试v1.1.py", "回归测试v1.2.py", "回归测试v1.3.py"):
     r = subprocess.run([sys.executable, str(ROOT / "验证" / t)], capture_output=True, text=True)
     ran = re.search(r"Ran (\d+) tests", r.stderr)
     check(r.returncode == 0, f"{t}：{ran.group(1) if ran else '?'} 个测试")
 
 print("2. 示例预期状态")
-s = importlib.util.spec_from_file_location("geaplus", SKILL / "scripts" / "geaplus-v1.2.py")
+s = importlib.util.spec_from_file_location("geaplus", SKILL / "scripts" / "geaplus-v1.3.py")
 gea = importlib.util.module_from_spec(s)
 s.loader.exec_module(gea)
 EXPECT = {

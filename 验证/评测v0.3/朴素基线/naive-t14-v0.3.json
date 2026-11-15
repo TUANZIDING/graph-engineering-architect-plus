@@ -1,0 +1,48 @@
+{
+ "schema_version": "1.1",
+ "title": "阈值自动调",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "误报减半",
+  "human_owner": "Bruce",
+  "observable_success": "护士标记的误报数下降 50%"
+ },
+ "anchors": [
+  {
+   "node_id": "labels",
+   "source": "护士误报标记"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "labels",
+   "kind": "anchor",
+   "responsibility": "护士标记的误报"
+  },
+  {
+   "id": "tune",
+   "kind": "execution_loop",
+   "responsibility": "每周调高阈值",
+   "optimizes": "false_alarm"
+  },
+  {
+   "id": "check",
+   "kind": "verification_loop",
+   "responsibility": "统计误报是否下降"
+  }
+ ],
+ "edges": [
+  {
+   "from": "labels",
+   "to": "check",
+   "relation": "anchors",
+   "artifact": "labels"
+  },
+  {
+   "from": "tune",
+   "to": "check",
+   "relation": "feeds",
+   "artifact": "threshold"
+  }
+ ]
+}

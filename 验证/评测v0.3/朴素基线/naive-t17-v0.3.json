@@ -1,0 +1,42 @@
+{
+ "schema_version": "1.1",
+ "title": "题库自调",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "正确率稳定 70%",
+  "human_owner": "Bruce",
+  "observable_success": "平均正确率 68%-72%"
+ },
+ "nodes": [
+  {
+   "id": "a",
+   "kind": "execution_loop",
+   "responsibility": "生成题目"
+  },
+  {
+   "id": "b",
+   "kind": "execution_loop",
+   "responsibility": "按正确率调难度",
+   "optimizes": "correct_rate"
+  },
+  {
+   "id": "exam",
+   "kind": "execution",
+   "responsibility": "题目进入出科考试"
+  }
+ ],
+ "edges": [
+  {
+   "from": "a",
+   "to": "b",
+   "relation": "feeds",
+   "artifact": "items"
+  },
+  {
+   "from": "b",
+   "to": "exam",
+   "relation": "feeds",
+   "artifact": "items"
+  }
+ ]
+}

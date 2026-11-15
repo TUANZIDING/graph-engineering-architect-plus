@@ -1,0 +1,743 @@
+{
+  "schema_version": "1.1",
+  "title": "活的系统综述：每日检索—独立核查—人工签发的控制架构",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "让活的系统综述的证据表、论文结论段和网站推荐意见始终与当前全部合格证据一致且正确，并及时纳入新证据",
+    "human_owner": "Bruce（丁海祥，综述负责人）",
+    "observable_success": "(1) 每个已合并条目都有独立第二提取一致或仲裁记录，可回溯到PMID/DOI全文；(2) 月度审计中隐藏种子集召回率≥95%、抽样复筛假阴性率≤5%，已撤稿研究在证据表中为0；(3) 每一次结论或推荐意见改动都有锁定代码复算报告和Bruce+临床合作者双签记录，网站内容与最后签字版本一致；(4) 新合格研究从PubMed收录到进入证据表的中位时间≤14天",
+    "out_of_scope": [
+      "Agent自动改写论文结论段或网站推荐意见",
+      "Agent修改检索式、纳排标准、数据字典、分析代码或结论改写阈值",
+      "把字段格式齐全当作纳入或合并的充分条件",
+      "向期刊投稿、对外发布新闻或个体化医疗建议"
+    ],
+    "metrics": [
+      "eligible_study_recall",
+      "extraction_agreement_rate",
+      "retracted_studies_in_table",
+      "signed_conclusion_changes",
+      "median_days_to_inclusion",
+      "new_eligible_studies_added"
+    ]
+  },
+  "classification_rationale": "原流程是‘A加条目→B查格式→自动合并→自动改结论和网站推荐’的单线自动化，唯一检查（格式齐全）与内容真伪无关，却直接驱动高风险的对外推荐意见。这里有多个相互作用的目标和速度（每日检索的及时性 vs 证据正确性 vs 结论稳定性），‘纳入数量’可被刷高，需要来源独立的核查与反指标、慢速审计检索漂移、方案修订的治理，以及发布前的人工门；单回路无法约束自己的判据，因此用图；Agent A每日检索本身是持久回路，故为graph_plus_loop。",
+  "permissions": {
+    "human_owner": "Bruce（丁海祥，综述负责人）",
+    "allowed_actions": [
+      "Agent A每日按冻结检索式检索并写入暂存区",
+      "Agent B校验字段格式并退回不合格条目",
+      "独立核查者读取全文与注册记录并否决条目",
+      "合并器写入版本化证据表（可回滚）",
+      "合成Agent生成结论修改提案（不发布）",
+      "审计与治理节点提出修订提案"
+    ],
+    "forbidden_actions": [
+      "任何Agent未经publish_gate签字修改论文结论段或网站推荐意见",
+      "Agent A或Agent B直接合并到证据表",
+      "执行节点修改检索式、纳排标准、数据字典、分析代码、结论阈值或种子集",
+      "删除排除记录或变更日志",
+      "未经protocol_change_gate修改冻结锚点"
+    ]
+  },
+  "frozen_rules": [
+    "已注册方案（PICO、纳排标准、数据字典、锁定分析代码、GRADE规则、结论改写阈值）只能经protocol_change_gate修订并在PROSPERO登记",
+    "隐藏种子集对Agent A不可见且不可写",
+    "格式通过只是进入独立提取的前提，不构成合并或改结论的依据",
+    "结论段与网站推荐意见的任何改动需要Bruce与一名临床合作者双签",
+    "每次合并和发布都必须可回滚并留版本记录",
+    "有疑义时保持当前已批准结论不变"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 10,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 30
+  },
+  "failure_policy": {
+    "failed": "条目核查失败→退回暂存区并记录原因；发布后发现错误→立即回滚到上一签字版本并通知Bruce",
+    "blocked": "全文不可得、核查者不可用或锚点过期→条目停留暂存区，不合并；结论保持现状并升级给Bruce",
+    "budget_exhausted": "停止当日检索与合成，保留暂存区，交接给Bruce决定是否扩大预算",
+    "stalled": "同一条目仲裁超过14天未决→移出本轮，交接文件列明"
+  },
+  "stop_handoff": {
+    "owner": "Bruce（丁海祥，综述负责人）",
+    "conditions": [
+      "completed：本周期提案已签发或明确决定不改，证据表与网站版本一致",
+      "failed：发布内容被审计发现与签字版本或证据不符，已回滚",
+      "blocked：冻结锚点过期或核查者缺位，暂停合并与发布",
+      "budget_exhausted：成本或重试上限触发",
+      "stalled：仲裁或签字超时"
+    ],
+    "artifact": "handoff.md"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "priority_policy": "患者安全与结论正确性 > 方案忠实度 > 证据完整性（不漏检）> 更新及时性；有疑义时保持现有已批准结论"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "Protocol amendment",
+      "Any change to manuscript conclusion or website recommendation"
+    ]
+  },
+  "verification": {
+    "independence_statement": "独立提取者看不到Agent A的条目，直接读全文与注册记录（与A读的PubMed摘要不同来源），且由不同主体承担；结论核查者用锁定代码独立复算，不复用合成Agent的输出数字；反指标与审计读取排除记录抽样、撤稿数据库和对A隐藏的种子集。评估者与数据来源都与执行者分离。",
+    "checks": [
+      {
+        "verifier_node": "format_gate",
+        "criterion": "数据字典中必填字段齐全、取值合规",
+        "evidence": "确定性校验日志",
+        "failure_signal": "任一必填字段缺失或格式不符→退回A"
+      },
+      {
+        "verifier_node": "extraction_verifier",
+        "criterion": "合格性判定与关键字段（效应量、样本量、随访、偏倚风险）与独立第二提取一致",
+        "evidence": "逐字段比对表＋全文页码",
+        "failure_signal": "任一关键字段不一致或合格性分歧→否决合并并升级仲裁"
+      },
+      {
+        "verifier_node": "conclusion_verifier",
+        "criterion": "锁定代码复算结果与提案一致，且效应方向/显著性/GRADE确定性跨过预设改写阈值，敏感性分析稳定",
+        "evidence": "独立复算报告与新旧版本差异",
+        "failure_signal": "复算不一致、未达阈值、文字与数字不符→否决提案"
+      }
+    ]
+  },
+  "external_inputs": [
+    "exclusion log sample",
+    "Crossref and Retraction Watch status"
+  ],
+  "anchors": [
+    {
+      "node_id": "protocol_anchor",
+      "source": "PROSPERO registered protocol + locked analysis repository tag",
+      "evidence_form": "已登记方案文本、数据字典与带哈希的分析代码版本",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "freshness_rule": "每次运行前核对哈希；方案修订后旧版作废；至少每180天由Bruce复核一次",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "source_record_anchor",
+      "source": "Publisher full text, trial registries, Crossref/Retraction Watch",
+      "evidence_form": "按PMID/DOI读取的全文与注册记录、撤稿状态",
+      "owner": "外部出版方与注册平台",
+      "freshness_rule": "每次核查时实时读取；撤稿状态缓存不超过7天",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "benchmark_anchor",
+      "source": "Hand-curated hidden seed set (Bruce + second reviewer)",
+      "evidence_form": "人工确认的合格研究清单，对Agent A隐藏",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "freshness_rule": "每季度补充新确认研究；超过90天未更新则审计召回结论标记为过期",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "protocol_anchor",
+      "kind": "anchor",
+      "responsibility": "冻结的已注册方案（PROSPERO）：PICO纳排标准、证据表数据字典、锁定的荟萃分析代码、GRADE降级规则、结论改写阈值",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "仅经人工门修订",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "approved protocol amendment"
+        ],
+        "outputs": [
+          "registered protocol v-frozen"
+        ]
+      }
+    },
+    {
+      "id": "source_record_anchor",
+      "kind": "anchor",
+      "responsibility": "原始一手记录：出版方全文、试验注册记录（ClinicalTrials.gov等）、Crossref/Retraction Watch撤稿与更正状态；任何Agent都不能改写",
+      "owner": "外部出版方与注册平台（读取权限由Bruce管理）",
+      "cadence": "每次核查时实时读取",
+      "cadence_tier": "fast",
+      "contract": {
+        "inputs": [
+          "PMID/DOI lookup request"
+        ],
+        "outputs": [
+          "primary full text and registry records"
+        ]
+      }
+    },
+    {
+      "id": "benchmark_anchor",
+      "kind": "anchor",
+      "responsibility": "Bruce与第二审稿人手工确认、对Agent A隐藏的已知合格研究种子集，用于检测检索召回率衰减",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "每季度由人工补充",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "approved protocol amendment"
+        ],
+        "outputs": [
+          "hidden seed set of known eligible studies"
+        ]
+      }
+    },
+    {
+      "id": "daily_search_screen",
+      "kind": "execution_loop",
+      "responsibility": "Agent A：每天用冻结检索式检索PubMed新文献，按方案初筛，只把候选条目写入待审暂存区（不能直接进证据表）；同时保留全部排除记录与排除理由",
+      "owner": "Agent A（检索筛选Agent）",
+      "cadence": "每天",
+      "cadence_tier": "fast",
+      "max_iterations": 3,
+      "optimizes": "new_eligible_studies_added",
+      "evidence_sources": [
+        "PubMed E-utilities abstracts"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "staging_queue"
+      ],
+      "contract": {
+        "inputs": [
+          "registered protocol v-frozen",
+          "format rejection notice",
+          "screening correction list",
+          "arbitration decision"
+        ],
+        "outputs": [
+          "candidate entries in staging_queue",
+          "exclusion log with reasons"
+        ]
+      }
+    },
+    {
+      "id": "format_gate",
+      "kind": "verification_loop",
+      "responsibility": "Agent B（收窄职责）：确定性校验字段齐全与格式合规，只能退回，不再有合并权；格式通过不等于内容正确",
+      "owner": "Agent B（确定性格式校验脚本）",
+      "cadence": "每个候选条目",
+      "cadence_tier": "fast",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "evidence table data dictionary"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "candidate entries in staging_queue",
+          "registered protocol v-frozen"
+        ],
+        "outputs": [
+          "format pass list",
+          "format rejection notice"
+        ]
+      }
+    },
+    {
+      "id": "extraction_verifier",
+      "kind": "verification_loop",
+      "responsibility": "独立第二提取：在看不到Agent A条目的条件下，从全文/注册记录重新判定合格性并提取效应量、样本量、偏倚风险，与A的条目逐字段比对；不一致即否决",
+      "owner": "第二审稿人（人类合作者，或不同模型+全新上下文，由Bruce指定并抽查）",
+      "cadence": "每个通过格式校验的条目",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "publisher full text",
+        "trial registry record"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "format pass list",
+          "primary full text and registry records",
+          "registered protocol v-frozen"
+        ],
+        "outputs": [
+          "verified entry list",
+          "extraction discrepancy report"
+        ]
+      }
+    },
+    {
+      "id": "screening_counter",
+      "kind": "counter_metric_loop",
+      "responsibility": "反指标：盯住“纳入数量”这个易刷指标——抽样复筛A的排除记录（假阴性率）、查重复发表/重叠队列、撤稿与更正、注册结局与发表结局不一致；发现问题可否决合并或要求撤出已合并条目",
+      "owner": "Bruce指定的方法学合作者（与Agent A无共享上下文）",
+      "cadence": "每周",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "evidence_sources": [
+        "exclusion log sample",
+        "Crossref and Retraction Watch status"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "exclusion log with reasons",
+          "candidate entries in staging_queue",
+          "primary full text and registry records"
+        ],
+        "outputs": [
+          "screening correction list",
+          "retraction or duplicate veto list"
+        ]
+      }
+    },
+    {
+      "id": "evidence_merge",
+      "kind": "execution",
+      "responsibility": "确定性合并器：只把同时具备格式通过+独立提取通过、且未被反指标否决的条目写入版本化证据表；每次合并生成可回滚的版本号与变更日志",
+      "owner": "确定性合并脚本（由Bruce维护）",
+      "cadence": "每天批量",
+      "cadence_tier": "fast",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "evidence_table"
+      ],
+      "contract": {
+        "inputs": [
+          "verified entry list",
+          "retraction or duplicate veto list",
+          "arbitration decision"
+        ],
+        "outputs": [
+          "versioned evidence table",
+          "merge changelog"
+        ]
+      }
+    },
+    {
+      "id": "synthesis_update",
+      "kind": "synthesis",
+      "responsibility": "用锁定代码在版本化证据表上重跑荟萃分析、敏感性分析与GRADE，生成“结论/推荐意见修改提案”差异稿；只提议，不写论文和网站",
+      "owner": "统计合成Agent",
+      "cadence": "每周",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "side_effect": "none",
+      "evidence_sources": [
+        "versioned evidence table"
+      ],
+      "contract": {
+        "inputs": [
+          "versioned evidence table",
+          "registered protocol v-frozen"
+        ],
+        "outputs": [
+          "conclusion change proposal with diff"
+        ]
+      }
+    },
+    {
+      "id": "conclusion_verifier",
+      "kind": "verification_loop",
+      "responsibility": "独立复算并核对提案：效应方向、置信区间、GRADE确定性是否真的跨过方案预设的结论改写阈值；文字是否与数字一致；单篇新研究驱动的大幅变动要求敏感性分析稳定；不达阈值则否决改写，避免结论随每日新文献抖动",
+      "owner": "独立方法学/统计审阅者（人类或全新上下文的不同模型，不能是合成Agent）",
+      "cadence": "每份修改提案",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "independent reanalysis with locked code",
+        "prior approved conclusion version"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "conclusion change proposal with diff",
+          "versioned evidence table",
+          "registered protocol v-frozen"
+        ],
+        "outputs": [
+          "conclusion verification report"
+        ]
+      }
+    },
+    {
+      "id": "arbitration",
+      "kind": "arbitration",
+      "responsibility": "裁决格式校验、独立提取、反指标、结论核查之间的冲突与无法一致的条目",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "出现冲突时",
+      "cadence_tier": "human",
+      "priority_policy": "患者安全与结论正确性 > 方案忠实度（纳排与分析不偏离注册方案）> 证据完整性（不漏检）> 更新及时性；有疑义时保持现有已批准结论不变",
+      "contract": {
+        "inputs": [
+          "extraction discrepancy report",
+          "retraction or duplicate veto list",
+          "conclusion verification report"
+        ],
+        "outputs": [
+          "arbitration decision"
+        ]
+      }
+    },
+    {
+      "id": "publish_gate",
+      "kind": "human_gate",
+      "responsibility": "论文结论段与网站推荐意见的任何改动都需Bruce与一名临床合作者双签；可选择发布、暂缓或仅更新证据表不改推荐",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "每份通过核查的提案",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "conclusion verification report",
+          "conclusion change proposal with diff",
+          "arbitration decision"
+        ],
+        "outputs": [
+          "signed approval record"
+        ]
+      }
+    },
+    {
+      "id": "publish_update",
+      "kind": "execution",
+      "responsibility": "按签字版本更新论文结论段与网站推荐意见，附版本号、更新日期、变更说明与证据表版本，保留一键回滚",
+      "owner": "发布脚本（由Bruce维护）",
+      "cadence": "每次批准后",
+      "cadence_tier": "human",
+      "side_effect": "high-risk",
+      "writes": [
+        "manuscript conclusion",
+        "website recommendations"
+      ],
+      "contract": {
+        "inputs": [
+          "signed approval record"
+        ],
+        "outputs": [
+          "published version record"
+        ]
+      }
+    },
+    {
+      "id": "provenance_audit",
+      "kind": "audit_loop",
+      "responsibility": "慢审计：用隐藏种子集测检索召回率；检查PubMed索引/MeSH变动导致的检索漂移；从一手来源抽样重建证据表；核对网站内容与最后签字版本一致；统计结论修改频率是否异常",
+      "owner": "Bruce＋外部方法学顾问",
+      "cadence": "每月",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "evidence_sources": [
+        "hidden seed set",
+        "primary source resample",
+        "published website snapshot"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "hidden seed set of known eligible studies",
+          "versioned evidence table",
+          "published version record",
+          "exclusion log with reasons"
+        ],
+        "outputs": [
+          "monthly audit report"
+        ]
+      }
+    },
+    {
+      "id": "governance_review",
+      "kind": "governance_loop",
+      "responsibility": "季度治理：基于审计报告提出检索式、纳排标准、阈值或流程修订提案；只能提议",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "contract": {
+        "inputs": [
+          "monthly audit report"
+        ],
+        "outputs": [
+          "protocol amendment proposal"
+        ]
+      }
+    },
+    {
+      "id": "protocol_change_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce批准方案修订并在PROSPERO登记修订记录后，才可更新冻结锚点",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "每季度或按需",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "protocol amendment proposal"
+        ],
+        "outputs": [
+          "approved protocol amendment"
+        ]
+      }
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "停止/回滚/升级/交接：生成交接文件，写明当前已批准结论版本、证据表版本、未决冲突与暂停原因",
+      "owner": "Bruce（丁海祥，综述负责人）",
+      "cadence": "终态或触发停止条件时",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "published version record",
+          "monthly audit report",
+          "arbitration decision"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "protocol_anchor",
+      "to": "daily_search_screen",
+      "relation": "feeds",
+      "artifact": "registered protocol v-frozen"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "format_gate",
+      "relation": "anchors",
+      "artifact": "registered protocol v-frozen"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "extraction_verifier",
+      "relation": "anchors",
+      "artifact": "registered protocol v-frozen"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "synthesis_update",
+      "relation": "feeds",
+      "artifact": "registered protocol v-frozen"
+    },
+    {
+      "from": "protocol_anchor",
+      "to": "conclusion_verifier",
+      "relation": "anchors",
+      "artifact": "registered protocol v-frozen"
+    },
+    {
+      "from": "source_record_anchor",
+      "to": "extraction_verifier",
+      "relation": "anchors",
+      "artifact": "primary full text and registry records"
+    },
+    {
+      "from": "source_record_anchor",
+      "to": "screening_counter",
+      "relation": "anchors",
+      "artifact": "primary full text and registry records"
+    },
+    {
+      "from": "benchmark_anchor",
+      "to": "provenance_audit",
+      "relation": "anchors",
+      "artifact": "hidden seed set of known eligible studies"
+    },
+    {
+      "from": "daily_search_screen",
+      "to": "format_gate",
+      "relation": "feeds",
+      "artifact": "candidate entries in staging_queue"
+    },
+    {
+      "from": "daily_search_screen",
+      "to": "screening_counter",
+      "relation": "feeds",
+      "artifact": "exclusion log with reasons + candidate entries in staging_queue"
+    },
+    {
+      "from": "format_gate",
+      "to": "daily_search_screen",
+      "relation": "vetoes",
+      "artifact": "format rejection notice"
+    },
+    {
+      "from": "format_gate",
+      "to": "extraction_verifier",
+      "relation": "feeds",
+      "artifact": "format pass list"
+    },
+    {
+      "from": "extraction_verifier",
+      "to": "evidence_merge",
+      "relation": "constrains",
+      "artifact": "verified entry list"
+    },
+    {
+      "from": "extraction_verifier",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "extraction discrepancy report"
+    },
+    {
+      "from": "screening_counter",
+      "to": "daily_search_screen",
+      "relation": "constrains",
+      "artifact": "screening correction list"
+    },
+    {
+      "from": "screening_counter",
+      "to": "evidence_merge",
+      "relation": "vetoes",
+      "artifact": "retraction or duplicate veto list"
+    },
+    {
+      "from": "screening_counter",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "retraction or duplicate veto list"
+    },
+    {
+      "from": "arbitration",
+      "to": "evidence_merge",
+      "relation": "arbitrates",
+      "artifact": "arbitration decision"
+    },
+    {
+      "from": "arbitration",
+      "to": "daily_search_screen",
+      "relation": "arbitrates",
+      "artifact": "arbitration decision"
+    },
+    {
+      "from": "arbitration",
+      "to": "publish_gate",
+      "relation": "arbitrates",
+      "artifact": "arbitration decision"
+    },
+    {
+      "from": "arbitration",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "arbitration decision"
+    },
+    {
+      "from": "evidence_merge",
+      "to": "synthesis_update",
+      "relation": "feeds",
+      "artifact": "versioned evidence table"
+    },
+    {
+      "from": "evidence_merge",
+      "to": "conclusion_verifier",
+      "relation": "feeds",
+      "artifact": "versioned evidence table"
+    },
+    {
+      "from": "evidence_merge",
+      "to": "provenance_audit",
+      "relation": "feeds",
+      "artifact": "versioned evidence table"
+    },
+    {
+      "from": "synthesis_update",
+      "to": "conclusion_verifier",
+      "relation": "feeds",
+      "artifact": "conclusion change proposal with diff"
+    },
+    {
+      "from": "conclusion_verifier",
+      "to": "synthesis_update",
+      "relation": "vetoes",
+      "artifact": "conclusion verification report"
+    },
+    {
+      "from": "conclusion_verifier",
+      "to": "publish_gate",
+      "relation": "constrains",
+      "artifact": "conclusion verification report + conclusion change proposal with diff"
+    },
+    {
+      "from": "conclusion_verifier",
+      "to": "arbitration",
+      "relation": "escalates",
+      "artifact": "conclusion verification report"
+    },
+    {
+      "from": "publish_gate",
+      "to": "publish_update",
+      "relation": "constrains",
+      "artifact": "signed approval record"
+    },
+    {
+      "from": "publish_update",
+      "to": "provenance_audit",
+      "relation": "feeds",
+      "artifact": "published version record"
+    },
+    {
+      "from": "publish_update",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "published version record"
+    },
+    {
+      "from": "daily_search_screen",
+      "to": "provenance_audit",
+      "relation": "observes",
+      "artifact": "exclusion log with reasons"
+    },
+    {
+      "from": "provenance_audit",
+      "to": "governance_review",
+      "relation": "feeds",
+      "artifact": "monthly audit report"
+    },
+    {
+      "from": "provenance_audit",
+      "to": "publish_gate",
+      "relation": "escalates",
+      "artifact": "monthly audit report"
+    },
+    {
+      "from": "provenance_audit",
+      "to": "stop_handoff",
+      "relation": "escalates",
+      "artifact": "monthly audit report"
+    },
+    {
+      "from": "governance_review",
+      "to": "protocol_change_gate",
+      "relation": "escalates",
+      "artifact": "protocol amendment proposal"
+    },
+    {
+      "from": "protocol_change_gate",
+      "to": "protocol_anchor",
+      "relation": "revises",
+      "artifact": "approved protocol amendment"
+    },
+    {
+      "from": "protocol_change_gate",
+      "to": "benchmark_anchor",
+      "relation": "revises",
+      "artifact": "approved protocol amendment"
+    }
+  ]
+}

@@ -1,0 +1,279 @@
+{
+ "schema_version": "1.1",
+ "title": "活体系统综述证据更新",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "让证据表与结论始终可回溯到原文且经独立核对",
+  "human_owner": "Bruce",
+  "observable_success": "新增研究经独立复核者从原文全文核对纳入标准与效应数据，偏倚风险与证据确定性（GRADE）完成评估，撤稿与重复发表已排查，结论或推荐变更经 Bruce 批准",
+  "metrics": [
+   "new_study_yield"
+  ]
+ },
+ "external_inputs": [
+  "pdf-archive",
+  "pubmed-feed",
+  "retraction-watch",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "检索与初筛",
+   "生成证据表草稿"
+  ],
+  "forbidden_actions": [
+   "自动修改论文结论或网站推荐意见",
+   "只凭字段格式齐全合并新条目"
+  ]
+ },
+ "frozen_rules": [
+  "复核者必须回到原文全文独立核对，不读 A 的条目",
+  "结论与推荐的任何变更须 Bruce 批准"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "复核不通过",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "fulltext",
+   "source": "新纳入研究的原文全文 PDF 与试验注册记录",
+   "evidence_form": "PDF 与注册号清单",
+   "owner": "Bruce",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "fulltext",
+   "kind": "anchor",
+   "responsibility": "冻结的原文全文与注册记录",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "pdf-archive"
+    ],
+    "outputs": [
+     "fulltext-set"
+    ]
+   }
+  },
+  {
+   "id": "search",
+   "kind": "execution_loop",
+   "responsibility": "Agent A 每日检索并提取新研究条目",
+   "owner": "Agent A",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "pubmed-feed"
+    ],
+    "outputs": [
+     "draft-entries"
+    ]
+   },
+   "optimizes": "new_study_yield",
+   "max_iterations": 2,
+   "evidence_sources": [
+    "pubmed-feed"
+   ],
+   "writes": [
+    "entries/draft/"
+   ]
+  },
+  {
+   "id": "verify",
+   "kind": "verification_loop",
+   "responsibility": "独立复核者背对背从原文全文核对纳入标准与效应数据（不是只查格式）",
+   "owner": "复核者 B",
+   "contract": {
+    "inputs": [
+     "draft-entries",
+     "fulltext-set"
+    ],
+    "outputs": [
+     "verify-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "fulltext-set"
+   ]
+  },
+  {
+   "id": "integrity",
+   "kind": "audit_loop",
+   "responsibility": "偏倚风险（RoB 2/ROBINS-I）、GRADE 证据确定性、撤稿与重复发表（同一队列）排查",
+   "owner": "方法学审查",
+   "contract": {
+    "inputs": [
+     "draft-entries"
+    ],
+    "outputs": [
+     "integrity-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "retraction-watch"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "复核与审查意见不一致时裁决",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "verify-report",
+     "integrity-report"
+    ],
+    "outputs": [
+     "merged-entries"
+    ]
+   },
+   "priority_policy": "原文数据 > 偏倚与撤稿 > 时效"
+  },
+  {
+   "id": "publish-gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 批准更新结论段落与网站推荐意见",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "merged-entries"
+    ],
+    "outputs": [
+     "publish-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "search",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "fulltext",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "fulltext",
+   "to": "verify",
+   "relation": "anchors",
+   "artifact": "fulltext-set"
+  },
+  {
+   "from": "search",
+   "to": "verify",
+   "relation": "feeds",
+   "artifact": "draft-entries"
+  },
+  {
+   "from": "search",
+   "to": "integrity",
+   "relation": "feeds",
+   "artifact": "draft-entries"
+  },
+  {
+   "from": "integrity",
+   "to": "search",
+   "relation": "observes",
+   "artifact": "integrity-report"
+  },
+  {
+   "from": "verify",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "verify-report"
+  },
+  {
+   "from": "integrity",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "integrity-report"
+  },
+  {
+   "from": "verify",
+   "to": "publish-gate",
+   "relation": "vetoes",
+   "artifact": "verify-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "publish-gate",
+   "relation": "constrains",
+   "artifact": "merged-entries"
+  },
+  {
+   "from": "publish-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "publish-decision"
+  }
+ ]
+}

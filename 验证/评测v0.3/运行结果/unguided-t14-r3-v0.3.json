@@ -1,0 +1,520 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊脓毒症预警阈值周度调优——受控提案架构（非自动改阈值）",
+  "mode": "graph_plus_loop",
+  "rationale": "原请求是让Agent每周依据护士'误报'标记自动调高阈值、以误报减半为目标。这是单指标优化的闭环，直接作用于临床安全参数：调高阈值必然以灵敏度下降（漏报/延迟识别脓毒症）为代价，且'误报'标签本身来自护士主观判断、会受报警疲劳和后续是否确诊影响，不能当作真值。因此不能用单一loop直接改生产阈值：需要图结构把(1)标签审计、(2)以确诊脓毒症结局为锚的反向指标（灵敏度、漏报、抗生素时间）、(3)独立验证、(4)临床委员会人类闸门、(5)停止与回退分开；Agent只做每周分析与提案（loop），生产阈值变更必须人审后由厂商/信息科在受控流程中执行。目标也从'误报减半'改为'在灵敏度不下降的硬约束下降低误报/提高PPV'。",
+  "state": "design",
+  "root_goal": {
+    "statement": "在不降低脓毒症检出灵敏度、不延误治疗的前提下，减少急诊脓毒症预警的无效报警（提高阳性预测值、降低护士报警负担）；每周由Agent产出阈值/规则调整提案，经临床人员批准后才可上线。",
+    "human_owner": "Bruce（发起人）；生产阈值变更的最终责任人为急诊科主任/脓毒症质控小组（待Bruce确认具体人）",
+    "observable_success": "试运行期（建议≥8–12周）内：经病历复核确诊的脓毒症病例灵敏度不低于基线（非劣效界值预先冻结，如下降≤2个百分点且置信区间下限达标）；报警至抗生素时间、ICU转入、28天死亡等安全指标无恶化；同时每100例就诊报警数或无效报警比例显著下降、PPV上升。'误报减半'仅作为参考目标，不作为可牺牲安全的硬目标。",
+    "metrics": [
+      "false_alarm_rate",
+      "alarm_ppv",
+      "alarms_per_100_visits",
+      "sepsis_sensitivity",
+      "missed_sepsis_count",
+      "time_to_antibiotics",
+      "icu_transfer_rate",
+      "mortality_28d",
+      "label_agreement_kappa"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取上周去标识化的报警日志、护士标记、生命体征/检验数据与出院诊断",
+      "抽样病历复核并计算误报率、PPV、灵敏度等指标",
+      "在历史数据上离线回放/模拟候选阈值",
+      "生成阈值调整提案与风险报告",
+      "在影子模式（不触发真实报警）下并行运行候选阈值"
+    ],
+    "forbidden_actions": [
+      "Agent直接修改生产环境预警阈值或规则",
+      "以护士'误报'标记作为唯一真值标签",
+      "单周内阈值调整幅度超过冻结步长上限",
+      "在灵敏度未经结局锚验证时上线任何变更",
+      "关闭或静默报警以达成误报指标",
+      "向护士或医生展示可识别的个体绩效排名",
+      "导出可识别患者数据到院外系统"
+    ]
+  },
+  "frozen_rules": [
+    "灵敏度（基于病历复核确诊的脓毒症/Sepsis-3）为硬约束，非劣效界值在试运行前冻结，任何周提案不得突破",
+    "生产阈值只能由人类闸门批准后经信息科/厂商变更流程执行，Agent无写权限",
+    "单次调整步长与累计调整上限预先冻结（例如单周不超过一个评分档，累计不超过两档），超限需重新立项",
+    "'误报'定义必须使用预先写定的操作化标准（如报警后72小时内未满足脓毒症标准且未启动脓毒症处理），护士标记仅作为输入信号并接受审计",
+    "评估结局（确诊、抗生素时间、ICU、死亡）由不参与阈值提案的独立复核者判定",
+    "出现任何漏报相关的严重不良事件立即暂停并回退到上一已批准阈值",
+    "优先考虑不降低灵敏度的替代手段（分层报警、确认窗口、去重/抑制重复报警、合并检验指标），而非单纯上调阈值",
+    "该系统若属医疗器械软件，阈值修改需遵守厂商说明与院内医疗器械/信息变更管理及伦理要求"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 7,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 100
+  },
+  "failure_policy": "任一验证失败、数据缺失、标签一致性过低（kappa<0.6）或安全指标恶化时：本周不出调整提案，维持当前已批准阈值；严重漏报事件触发立即回退并上报；连续两周无法完成验证则停止循环、交由人类重新评估方案。",
+  "stop_handoff": {
+    "owner": "Bruce 与急诊科脓毒症质控小组",
+    "conditions": [
+      "灵敏度低于冻结的非劣效界值或置信区间无法排除劣效",
+      "发生与预警漏报/延迟相关的严重不良事件或死亡",
+      "护士标签与独立复核一致性过低，标签不可用",
+      "累计阈值调整达到冻结上限",
+      "连续3周误报指标无改善（提示需改模型或流程而非阈值）",
+      "达到试运行期终点，需做总体评估",
+      "数据接口、病例组合（如流感季）或系统版本发生重大变化"
+    ],
+    "artifact": "停止/交接报告：当前及历史阈值、各周提案与批准记录、灵敏度/PPV/误报趋势、安全事件清单、标签审计结果、回退建议"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "weekly_alarm_log",
+    "nurse_false_alarm_labels",
+    "ehr_vitals_labs",
+    "discharge_diagnoses",
+    "current_approved_threshold",
+    "frozen_noninferiority_margin"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_adjudicated_outcomes",
+      "source": "独立临床复核者依据病历按Sepsis-3/SEP-1类操作化标准判定的脓毒症确诊与时间点，联合抗生素时间、ICU转入、28天结局",
+      "evidence_form": "结构化复核表（每例报警及抽样未报警病例的确诊结论、判定依据、复核者）",
+      "owner": "急诊科脓毒症质控小组指定的独立复核医师",
+      "freshness_rule": "每周更新上周报警病例与随机抽样的未报警就诊；结局需满足72小时/28天随访窗后方可计入",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_baseline_policy",
+      "source": "试运行前冻结的基线灵敏度、PPV、非劣效界值、步长上限与误报操作化定义",
+      "evidence_form": "经质控小组签字的统计分析计划（SAP）文档",
+      "owner": "Bruce 与质控小组",
+      "freshness_rule": "试运行期内不变；修改需重新审批",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_baseline_policy",
+      "kind": "anchor",
+      "responsibility": "提供冻结的基线指标、非劣效界值、步长上限和误报定义",
+      "owner": "Bruce 与质控小组",
+      "contract": {
+        "inputs": [
+          "frozen_noninferiority_margin"
+        ],
+        "outputs": [
+          "frozen_sap"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "anchor_adjudicated_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供独立病历复核的脓毒症确诊与结局作为真值",
+      "owner": "独立复核医师",
+      "contract": {
+        "inputs": [
+          "ehr_vitals_labs",
+          "discharge_diagnoses",
+          "weekly_alarm_log"
+        ],
+        "outputs": [
+          "adjudicated_outcomes"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_chart_review"
+      ],
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "cadence_tier": "slow",
+      "writes": [
+        "adjudication_table"
+      ]
+    },
+    {
+      "id": "data_ingest",
+      "kind": "execution",
+      "responsibility": "汇总上周报警日志、护士标记、生命体征/检验与诊断，去标识化并检查完整性",
+      "owner": "Agent（信息科提供只读接口）",
+      "contract": {
+        "inputs": [
+          "weekly_alarm_log",
+          "nurse_false_alarm_labels",
+          "ehr_vitals_labs",
+          "discharge_diagnoses"
+        ],
+        "outputs": [
+          "weekly_dataset",
+          "data_quality_report"
+        ]
+      },
+      "evidence_sources": [
+        "alarm_system_log",
+        "nursing_labels",
+        "ehr"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "weekly_dataset"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "label_audit",
+      "kind": "audit_loop",
+      "responsibility": "将护士'误报'标记与独立复核结局比对，计算一致性、识别系统性偏差（如报警疲劳、班次差异），输出校正后的误报标签",
+      "owner": "Agent + 独立复核医师抽检",
+      "contract": {
+        "inputs": [
+          "weekly_dataset",
+          "adjudicated_outcomes",
+          "frozen_sap"
+        ],
+        "outputs": [
+          "audited_labels",
+          "label_agreement_report"
+        ]
+      },
+      "evidence_sources": [
+        "nursing_labels",
+        "ehr_chart_review"
+      ],
+      "context_scope": "fresh-independent",
+      "max_iterations": 2,
+      "side_effect": "none",
+      "writes": [
+        "audited_labels"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "threshold_proposal_loop",
+      "kind": "execution_loop",
+      "responsibility": "基于校正标签在历史数据上回放候选方案（阈值微调、分层报警、确认窗口、重复报警抑制），在灵敏度约束下最大化PPV/降低无效报警，产出不超过步长上限的提案",
+      "owner": "Agent",
+      "contract": {
+        "inputs": [
+          "audited_labels",
+          "weekly_dataset",
+          "current_approved_threshold",
+          "frozen_sap"
+        ],
+        "outputs": [
+          "candidate_proposal",
+          "replay_results"
+        ]
+      },
+      "optimizes": "false_alarm_rate",
+      "evidence_sources": [
+        "weekly_dataset",
+        "audited_labels"
+      ],
+      "max_iterations": 5,
+      "side_effect": "internal-reversible",
+      "writes": [
+        "candidate_proposal"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "safety_counter_metric",
+      "kind": "counter_metric_loop",
+      "responsibility": "Goodhart配对：针对每个候选方案，用独立复核结局计算灵敏度、漏报病例、报警至抗生素时间、ICU转入、死亡，并对未报警就诊随机抽样以估计漏报；与非劣效界值比较",
+      "owner": "Agent（统计）+ 独立复核医师",
+      "contract": {
+        "inputs": [
+          "candidate_proposal",
+          "adjudicated_outcomes",
+          "frozen_sap"
+        ],
+        "outputs": [
+          "safety_report"
+        ]
+      },
+      "optimizes": "sepsis_sensitivity",
+      "evidence_sources": [
+        "ehr_chart_review",
+        "unalarmed_visit_sample"
+      ],
+      "context_scope": "fresh-independent",
+      "max_iterations": 2,
+      "side_effect": "none",
+      "writes": [
+        "safety_report"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "independent_verification",
+      "kind": "verification_loop",
+      "responsibility": "不看提案推理过程，独立复现回放结果、检查数据泄漏/过拟合上周、检查步长与冻结规则合规，必要时要求影子模式验证",
+      "owner": "独立验证Agent（新上下文）+ 临床统计人员",
+      "contract": {
+        "inputs": [
+          "candidate_proposal",
+          "replay_results",
+          "safety_report",
+          "frozen_sap"
+        ],
+        "outputs": [
+          "verification_verdict"
+        ]
+      },
+      "evidence_sources": [
+        "weekly_dataset_holdout",
+        "ehr_chart_review"
+      ],
+      "context_scope": "fresh-independent",
+      "max_iterations": 2,
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "arbitration",
+      "kind": "arbitration",
+      "responsibility": "在误报改善与安全指标冲突时裁决；安全约束优先，任何灵敏度不达标即否决提案",
+      "owner": "Agent按冻结规则执行，结论交人审",
+      "priority_policy": "patient_safety > sensitivity_noninferiority > data_validity > nurse_burden > false_alarm_reduction",
+      "contract": {
+        "inputs": [
+          "candidate_proposal",
+          "safety_report",
+          "verification_verdict",
+          "label_agreement_report"
+        ],
+        "outputs": [
+          "weekly_decision_package"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "clinical_human_gate",
+      "kind": "human_gate",
+      "responsibility": "急诊科主任/脓毒症质控小组（含护理代表）审阅决策包，批准、拒绝或要求影子模式；批准后通过信息科/厂商变更流程执行并记录",
+      "owner": "急诊科主任与脓毒症质控小组",
+      "contract": {
+        "inputs": [
+          "weekly_decision_package"
+        ],
+        "outputs": [
+          "approved_threshold_change_order"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "production_alert_threshold"
+      ],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "post_change_monitor",
+      "kind": "governance_loop",
+      "responsibility": "上线后持续监测灵敏度、漏报事件、报警量和结局，触发暂停/回退；评估季节和病例组合漂移",
+      "owner": "质控小组 + Agent监测报告",
+      "contract": {
+        "inputs": [
+          "approved_threshold_change_order",
+          "adjudicated_outcomes",
+          "weekly_dataset"
+        ],
+        "outputs": [
+          "monitoring_report",
+          "rollback_request"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_chart_review",
+        "adverse_event_reports"
+      ],
+      "max_iterations": 12,
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "stop_handoff_node",
+      "kind": "stop_handoff",
+      "responsibility": "满足停止条件时冻结循环、回退到上一已批准阈值，并交付停止报告给Bruce与质控小组",
+      "owner": "Bruce 与质控小组",
+      "contract": {
+        "inputs": [
+          "monitoring_report",
+          "rollback_request",
+          "weekly_decision_package"
+        ],
+        "outputs": [
+          "stop_handoff_report"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {
+      "from": "anchor_baseline_policy",
+      "to": "label_audit",
+      "relation": "anchors",
+      "artifact": "frozen_sap"
+    },
+    {
+      "from": "anchor_baseline_policy",
+      "to": "threshold_proposal_loop",
+      "relation": "constrains",
+      "artifact": "frozen_sap"
+    },
+    {
+      "from": "anchor_baseline_policy",
+      "to": "safety_counter_metric",
+      "relation": "anchors",
+      "artifact": "frozen_sap"
+    },
+    {
+      "from": "anchor_baseline_policy",
+      "to": "independent_verification",
+      "relation": "anchors",
+      "artifact": "frozen_sap"
+    },
+    {
+      "from": "data_ingest",
+      "to": "anchor_adjudicated_outcomes",
+      "relation": "feeds",
+      "artifact": "weekly_dataset"
+    },
+    {
+      "from": "data_ingest",
+      "to": "label_audit",
+      "relation": "feeds",
+      "artifact": "weekly_dataset"
+    },
+    {
+      "from": "data_ingest",
+      "to": "threshold_proposal_loop",
+      "relation": "feeds",
+      "artifact": "weekly_dataset"
+    },
+    {
+      "from": "anchor_adjudicated_outcomes",
+      "to": "label_audit",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes"
+    },
+    {
+      "from": "anchor_adjudicated_outcomes",
+      "to": "safety_counter_metric",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes"
+    },
+    {
+      "from": "anchor_adjudicated_outcomes",
+      "to": "post_change_monitor",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes"
+    },
+    {
+      "from": "label_audit",
+      "to": "threshold_proposal_loop",
+      "relation": "feeds",
+      "artifact": "audited_labels"
+    },
+    {
+      "from": "label_audit",
+      "to": "arbitration",
+      "relation": "feeds",
+      "artifact": "label_agreement_report"
+    },
+    {
+      "from": "threshold_proposal_loop",
+      "to": "safety_counter_metric",
+      "relation": "feeds",
+      "artifact": "candidate_proposal"
+    },
+    {
+      "from": "threshold_proposal_loop",
+      "to": "independent_verification",
+      "relation": "feeds",
+      "artifact": "replay_results"
+    },
+    {
+      "from": "safety_counter_metric",
+      "to": "independent_verification",
+      "relation": "feeds",
+      "artifact": "safety_report"
+    },
+    {
+      "from": "safety_counter_metric",
+      "to": "threshold_proposal_loop",
+      "relation": "vetoes",
+      "artifact": "safety_report"
+    },
+    {
+      "from": "independent_verification",
+      "to": "arbitration",
+      "relation": "verifies",
+      "artifact": "verification_verdict"
+    },
+    {
+      "from": "safety_counter_metric",
+      "to": "arbitration",
+      "relation": "feeds",
+      "artifact": "safety_report"
+    },
+    {
+      "from": "independent_verification",
+      "to": "threshold_proposal_loop",
+      "relation": "revises",
+      "artifact": "verification_verdict"
+    },
+    {
+      "from": "arbitration",
+      "to": "clinical_human_gate",
+      "relation": "escalates",
+      "artifact": "weekly_decision_package"
+    },
+    {
+      "from": "clinical_human_gate",
+      "to": "post_change_monitor",
+      "relation": "feeds",
+      "artifact": "approved_threshold_change_order"
+    },
+    {
+      "from": "post_change_monitor",
+      "to": "data_ingest",
+      "relation": "observes",
+      "artifact": "monitoring_report"
+    },
+    {
+      "from": "post_change_monitor",
+      "to": "stop_handoff_node",
+      "relation": "hands_off",
+      "artifact": "rollback_request"
+    },
+    {
+      "from": "arbitration",
+      "to": "stop_handoff_node",
+      "relation": "hands_off",
+      "artifact": "weekly_decision_package"
+    }
+  ],
+  "notes": [
+    "对用户原始设想的关键修改：Agent不自动调阈值；目标由'误报减半'改为'灵敏度非劣效前提下降低无效报警'；护士标签需审计；必须对未报警就诊抽样以发现漏报（只看报警病例无法观察到假阴性）。",
+    "待Bruce确认：生产阈值责任人、现有系统可调参数（评分阈值/规则/延迟窗口）、厂商是否允许院内修改、基线数据周期、伦理/质控备案要求。"
+  ]
+}

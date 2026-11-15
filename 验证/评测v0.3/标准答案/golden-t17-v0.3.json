@@ -1,0 +1,278 @@
+{
+ "schema_version": "1.1",
+ "title": "规培题库出题与难度调整",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "出科考试能有效区分住院医师的胜任力",
+  "human_owner": "Bruce",
+  "observable_success": "题目与答案经带教主治按教材与指南核对，区分度与信度达标、无泄题，平均正确率仅作参考，教学主任批准后入正式考试",
+  "metrics": [
+   "mean_correct_rate"
+  ]
+ },
+ "external_inputs": [
+  "expert-review",
+  "response-log",
+  "pilot-results",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "生成题目草稿",
+   "在练习题中试测"
+  ],
+  "forbidden_actions": [
+   "未经审核的题目直接进入出科考试",
+   "为凑正确率修改标准答案"
+  ]
+ },
+ "frozen_rules": [
+  "标准答案以教材与现行指南为准，由带教专家核对",
+  "进入正式考试须教学主任批准"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "题目质量不达标",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "key",
+   "source": "带教主治按教材与现行指南核对的标准答案与考纲",
+   "evidence_form": "审核记录",
+   "owner": "教学主任",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "key",
+   "kind": "anchor",
+   "responsibility": "专家核对的答案与考纲",
+   "owner": "教学主任",
+   "contract": {
+    "inputs": [
+     "expert-review"
+    ],
+    "outputs": [
+     "answer-key"
+    ]
+   }
+  },
+  {
+   "id": "gen",
+   "kind": "execution_loop",
+   "responsibility": "Agent A 生成题目，Agent B 调整难度",
+   "owner": "出题 Agent",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "response-log"
+    ],
+    "outputs": [
+     "item-draft"
+    ]
+   },
+   "optimizes": "mean_correct_rate",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "response-log"
+   ],
+   "writes": [
+    "items/draft/"
+   ]
+  },
+  {
+   "id": "key-check",
+   "kind": "verification_loop",
+   "responsibility": "带教专家独立核对题干与答案正确性",
+   "owner": "带教主治",
+   "contract": {
+    "inputs": [
+     "item-draft",
+     "answer-key"
+    ],
+    "outputs": [
+     "key-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "answer-key"
+   ]
+  },
+  {
+   "id": "psychometrics",
+   "kind": "counter_metric_loop",
+   "responsibility": "监测区分度、信度、考纲覆盖与泄题，防止为凑正确率而降质",
+   "owner": "教研室",
+   "contract": {
+    "inputs": [
+     "item-draft"
+    ],
+    "outputs": [
+     "item-quality-report"
+    ]
+   },
+   "max_iterations": 1,
+   "evidence_sources": [
+    "pilot-results"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "正确率目标与题目质量冲突时裁决",
+   "owner": "教学主任",
+   "contract": {
+    "inputs": [
+     "key-report",
+     "item-quality-report"
+    ],
+    "outputs": [
+     "recommendation"
+    ]
+   },
+   "priority_policy": "答案正确 > 区分度与效度 > 正确率目标"
+  },
+  {
+   "id": "exam-gate",
+   "kind": "human_gate",
+   "responsibility": "教学主任批准题目进入出科考试",
+   "owner": "教学主任",
+   "contract": {
+    "inputs": [
+     "recommendation"
+    ],
+    "outputs": [
+     "exam-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "gen",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "key",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "key",
+   "to": "key-check",
+   "relation": "anchors",
+   "artifact": "answer-key"
+  },
+  {
+   "from": "gen",
+   "to": "key-check",
+   "relation": "feeds",
+   "artifact": "item-draft"
+  },
+  {
+   "from": "gen",
+   "to": "psychometrics",
+   "relation": "feeds",
+   "artifact": "item-draft"
+  },
+  {
+   "from": "psychometrics",
+   "to": "gen",
+   "relation": "observes",
+   "artifact": "item-quality-report"
+  },
+  {
+   "from": "key-check",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "key-report"
+  },
+  {
+   "from": "psychometrics",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "item-quality-report"
+  },
+  {
+   "from": "key-check",
+   "to": "exam-gate",
+   "relation": "vetoes",
+   "artifact": "key-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "exam-gate",
+   "relation": "constrains",
+   "artifact": "recommendation"
+  },
+  {
+   "from": "exam-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "exam-decision"
+  }
+ ]
+}

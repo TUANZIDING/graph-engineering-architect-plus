@@ -1,0 +1,492 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊脓毒症预警阈值调优：每周提案循环 + 漏报反指标 + 临床委员会人工门控",
+  "mode": "graph_plus_loop",
+  "rationale": "用户原方案（Agent 依据护士标记的误报每周自动调高阈值，以“误报减半”为唯一目标）是典型 Goodhart 陷阱：调高阈值必然降低灵敏度，误报减少的同时会增加漏报（真正脓毒症晚识别/未识别），而漏报才是致命伤害；且“护士标记误报”不是金标准（标记时多数患者结局未明，存在警报疲劳偏倚），用它既做优化信号又做验证会形成循环互证。因此不能用单一 loop 或直接自动改阈值：需要图结构把（1）误报数据清洗与结局回溯、（2）阈值候选模拟、（3）独立的漏报/灵敏度反指标循环、（4）基于病历回顾的锚点、（5）临床委员会人工门控、（6）上线后安全监测与自动回滚串起来；每周节奏的提案-评估构成外层循环，故为 graph_plus_loop。Agent 只能提出和模拟，绝不能直接修改生产阈值。",
+  "state": "design",
+  "root_goal": {
+    "statement": "在不增加脓毒症漏报和识别延迟的前提下，降低急诊脓毒症预警系统的误报负担（目标：可执行的误报率下降约50%，但仅在安全约束满足时追求）。",
+    "human_owner": "Bruce（急诊科，需联合急诊科主任/脓毒症质控小组/护理部/信息科作为共同责任方）",
+    "observable_success": "经临床委员会批准的阈值变更上线后连续≥4周：每100次就诊（或每1000患者时）的经回溯确认误报数较基线下降（目标约50%）；同期经病历回顾确认的脓毒症病例灵敏度不低于基线下限（非劣效界值由委员会事先冻结，如绝对下降≤2个百分点且置信区间下界不越界）；首次预警至抗生素时间、ICU转入、28天死亡率等安全指标无恶化；任一安全指标越界即回滚。",
+    "metrics": [
+      "false_alert_rate_confirmed",
+      "sepsis_sensitivity",
+      "missed_sepsis_count",
+      "time_to_antibiotics",
+      "alert_to_recognition_delay",
+      "positive_predictive_value",
+      "mortality_28d",
+      "nurse_alert_burden"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "只读访问去标识化的报警日志、护士误报标记、电子病历结局字段（经信息科/伦理或质控授权）",
+      "在离线历史数据上模拟候选阈值并计算误报率、灵敏度、PPV、预警提前时间",
+      "生成每周阈值调整提案报告与漏报病例清单",
+      "在沙盒/影子模式（silent mode）中运行候选阈值，不触发真实报警",
+      "上线后监测指标并在越界时向人工发出回滚请求"
+    ],
+    "forbidden_actions": [
+      "Agent 自主修改生产环境预警阈值或模型参数",
+      "仅以误报减少为目标进行优化而不计算漏报/灵敏度",
+      "把护士“误报”标记直接当作金标准标签",
+      "单次调整幅度超过委员会冻结的步长上限",
+      "在委员会批准前把候选阈值推送给真实报警流",
+      "修改或删除原始报警日志与护士标记",
+      "将可识别患者信息导出到院外或外部模型服务"
+    ]
+  },
+  "frozen_rules": [
+    "生产阈值的任何变更必须经脓毒症质控/临床委员会书面批准并按医院医疗器械软件/信息系统变更管理流程执行（如系统为厂商产品，需符合厂商许可的可配置范围与注册证要求）。",
+    "灵敏度非劣效界值、安全指标红线、单次调整步长上限和最低观察期在项目开始前冻结，Agent 不得修改。",
+    "“误报”的判定以结局回溯（如72小时内是否满足Sepsis-3/医院脓毒症定义、是否开始抗生素/升压药/ICU）为准，护士标记只作为候选信号。",
+    "任何调整必须可回滚，保留旧阈值配置及版本号。",
+    "漏报病例必须逐例人工复核，不得仅以汇总统计放行。",
+    "优先考虑非阈值手段（报警分层、重复报警抑制、确认工作流、特定人群规则排除）与阈值调整并列评估，不默认只调阈值。"
+  ],
+  "approval": {
+    "status": "pending",
+    "note": "设计待 Bruce 与急诊科脓毒症质控小组确认；任何上线变更还需委员会逐次批准。"
+  },
+  "budget": {
+    "max_agents": 7,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": {
+    "on_safety_breach": "立即停止提案循环，请求人工回滚到上一批准阈值，并通知 Bruce 与质控小组",
+    "on_data_gap": "结局回溯不完整（如72小时结局缺失>10%）时本周不出提案，只报告数据缺口",
+    "on_anchor_conflict": "护士标记与病历回顾结论不一致率过高时暂停，交给仲裁与人工复核",
+    "on_max_iterations": "达到迭代上限仍未在安全约束内达标，则停止并交接：报告可达到的误报下降幅度与代价，建议改模型/工作流而非继续调阈值",
+    "retry": "数据抽取失败可重试≤2次"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "任何安全红线越界（灵敏度低于非劣效下界、出现经复核的漏报导致延迟治疗的病例、首剂抗生素时间恶化）",
+      "连续两周提案被委员会否决",
+      "外层循环达到 max_iterations",
+      "结局数据或护士标记质量不足以支持判断",
+      "发现阈值已到委员会允许范围边界，继续调高不被允许"
+    ],
+    "artifact": "交接包：基线与当前指标对比表、每个候选阈值的误报-灵敏度权衡曲线、漏报病例逐例复核记录、阈值变更历史与回滚记录、未解决问题与建议（如工作流改进或模型重训）"
+  },
+  "execution_contract": {
+    "external_execution": false,
+    "note": "本设计仅产出架构；Agent 不直接作用于生产报警系统。"
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_chart_review",
+      "source": "电子病历结局回溯 + 由不知晓阈值方案的急诊/ICU医师按医院脓毒症定义（Sepsis-3）进行的抽样病历复核",
+      "evidence_form": "每周抽样报警与未报警病例（含全部疑似漏报）的金标准标签表：是否脓毒症、确诊时间、抗生素时间、结局",
+      "owner": "脓毒症质控小组（盲法复核医师）",
+      "freshness_rule": "每周更新；用于提案的标签须为报警后≥72小时的结局",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_safety_thresholds",
+      "source": "项目启动时临床委员会冻结的安全约束文件",
+      "evidence_form": "灵敏度非劣效界值、安全指标红线、单次步长上限、最低观察期、阈值允许范围",
+      "owner": "Bruce + 临床委员会",
+      "freshness_rule": "仅委员会可修订；每季度复核",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "报警日志",
+    "护士误报标记",
+    "电子病历结局字段",
+    "当前生产阈值配置",
+    "委员会冻结的安全约束文件"
+  ],
+  "nodes": [
+    {
+      "id": "baseline_and_data_prep",
+      "kind": "execution",
+      "responsibility": "抽取上周报警日志、护士误报标记与患者结局，去标识化；建立基线（误报率、灵敏度、PPV、每患者时报警数），并把护士标记与结局回溯对齐，区分“确认误报”“实为脓毒症被误标”“结局未明”。",
+      "owner": "Agent（数据准备）",
+      "contract": {
+        "inputs": [
+          "报警日志",
+          "护士误报标记",
+          "电子病历结局字段",
+          "当前生产阈值配置"
+        ],
+        "outputs": [
+          "清洗后的周数据集",
+          "基线指标",
+          "标记-结局一致性表"
+        ]
+      },
+      "evidence_sources": [
+        "报警日志",
+        "护士误报标记",
+        "电子病历结局字段"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "周数据集"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "anchor_chart_review",
+      "kind": "anchor",
+      "responsibility": "独立医师盲法病历复核，给出金标准脓毒症标签，尤其复核疑似漏报与护士标记的误报样本。",
+      "owner": "脓毒症质控小组",
+      "contract": {
+        "inputs": [
+          "清洗后的周数据集"
+        ],
+        "outputs": [
+          "金标准标签表"
+        ]
+      },
+      "evidence_sources": [
+        "电子病历原始记录"
+      ],
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "writes": [
+        "金标准标签表"
+      ],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "anchor_safety_thresholds",
+      "kind": "anchor",
+      "responsibility": "提供冻结的安全约束与允许调整范围。",
+      "owner": "Bruce + 临床委员会",
+      "contract": {
+        "inputs": [
+          "委员会冻结的安全约束文件"
+        ],
+        "outputs": [
+          "安全约束"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "threshold_proposal_loop",
+      "kind": "execution_loop",
+      "responsibility": "在历史/离线数据上搜索候选阈值（及分层、去重抑制等非阈值方案），每个候选输出误报下降与灵敏度损失的权衡；只在安全约束内给出最多一个推荐提案，步长不超过上限。",
+      "owner": "Agent（提案）",
+      "contract": {
+        "inputs": [
+          "清洗后的周数据集",
+          "金标准标签表",
+          "安全约束"
+        ],
+        "outputs": [
+          "候选阈值权衡表",
+          "本周推荐提案"
+        ]
+      },
+      "max_iterations": 5,
+      "optimizes": "false_alert_rate_confirmed",
+      "evidence_sources": [
+        "清洗后的周数据集",
+        "金标准标签表"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "提案报告"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "missed_sepsis_counter_loop",
+      "kind": "counter_metric_loop",
+      "responsibility": "独立于提案节点，对推荐阈值计算灵敏度、漏报病例数、预警提前时间损失和亚组（老年、免疫抑制、低血压前期）表现；对每个会被新阈值“消掉”的真脓毒症报警逐例列出；任何越界即否决。",
+      "owner": "Agent（安全反指标，独立上下文）",
+      "contract": {
+        "inputs": [
+          "本周推荐提案",
+          "金标准标签表",
+          "安全约束"
+        ],
+        "outputs": [
+          "漏报与灵敏度评估",
+          "否决或放行意见"
+        ]
+      },
+      "max_iterations": 3,
+      "optimizes": "sepsis_sensitivity",
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "金标准标签表",
+        "电子病历结局字段"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "安全评估报告"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "label_quality_audit",
+      "kind": "audit_loop",
+      "responsibility": "审计护士误报标记的可靠性（与金标准一致率、按班次/护士的分布、警报疲劳迹象），防止以有偏标签驱动阈值；一致率低于冻结下限时阻止本周提案。",
+      "owner": "Agent（审计，独立上下文）",
+      "contract": {
+        "inputs": [
+          "标记-结局一致性表",
+          "金标准标签表"
+        ],
+        "outputs": [
+          "标签质量审计结论"
+        ]
+      },
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "护士误报标记",
+        "金标准标签表"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "审计报告"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "proposal_arbitration",
+      "kind": "arbitration",
+      "responsibility": "汇总提案、安全评估与标签审计；冲突时按优先级裁决形成委员会材料。",
+      "owner": "Agent（汇总）",
+      "priority_policy": "患者安全（漏报/灵敏度）> 标签质量与数据完整性 > 误报下降幅度 > 护士工作负担；任何安全否决不可被效益覆盖",
+      "contract": {
+        "inputs": [
+          "候选阈值权衡表",
+          "本周推荐提案",
+          "漏报与灵敏度评估",
+          "否决或放行意见",
+          "标签质量审计结论"
+        ],
+        "outputs": [
+          "委员会决策包"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "决策包"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "committee_gate",
+      "kind": "human_gate",
+      "responsibility": "脓毒症质控/临床委员会（含急诊医师、护理代表、信息科）审阅决策包，决定：否决 / 先影子模式运行 / 批准小步上线；批准后由信息科按变更管理流程执行配置变更并记录版本。",
+      "owner": "Bruce + 临床委员会",
+      "contract": {
+        "inputs": [
+          "委员会决策包"
+        ],
+        "outputs": [
+          "批准/否决决定",
+          "已批准阈值版本"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "生产阈值配置（仅信息科人工执行）"
+      ],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "post_change_safety_monitor",
+      "kind": "governance_loop",
+      "responsibility": "变更上线后（或影子模式期间）每周监测误报率、灵敏度、漏报、抗生素时间、ICU转入与死亡；与基线及冻结红线比较；越界立即请求人工回滚，并把结果反馈给下一轮提案。",
+      "owner": "Agent（监测）+ 质控小组",
+      "contract": {
+        "inputs": [
+          "已批准阈值版本",
+          "金标准标签表",
+          "安全约束",
+          "电子病历结局字段"
+        ],
+        "outputs": [
+          "上线后安全监测报告",
+          "回滚请求"
+        ]
+      },
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "电子病历结局字段",
+        "金标准标签表"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "监测报告"
+      ],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "stop_and_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "满足停止条件时整理交接包交给 Bruce。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "上线后安全监测报告",
+          "回滚请求",
+          "批准/否决决定"
+        ],
+        "outputs": [
+          "交接包"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {
+      "from": "baseline_and_data_prep",
+      "to": "anchor_chart_review",
+      "relation": "feeds",
+      "artifact": "清洗后的周数据集（抽样清单）"
+    },
+    {
+      "from": "baseline_and_data_prep",
+      "to": "threshold_proposal_loop",
+      "relation": "feeds",
+      "artifact": "清洗后的周数据集"
+    },
+    {
+      "from": "baseline_and_data_prep",
+      "to": "label_quality_audit",
+      "relation": "feeds",
+      "artifact": "标记-结局一致性表"
+    },
+    {
+      "from": "anchor_chart_review",
+      "to": "threshold_proposal_loop",
+      "relation": "anchors",
+      "artifact": "金标准标签表"
+    },
+    {
+      "from": "anchor_chart_review",
+      "to": "missed_sepsis_counter_loop",
+      "relation": "anchors",
+      "artifact": "金标准标签表"
+    },
+    {
+      "from": "anchor_chart_review",
+      "to": "label_quality_audit",
+      "relation": "anchors",
+      "artifact": "金标准标签表"
+    },
+    {
+      "from": "anchor_chart_review",
+      "to": "post_change_safety_monitor",
+      "relation": "anchors",
+      "artifact": "金标准标签表"
+    },
+    {
+      "from": "anchor_safety_thresholds",
+      "to": "threshold_proposal_loop",
+      "relation": "constrains",
+      "artifact": "安全约束"
+    },
+    {
+      "from": "anchor_safety_thresholds",
+      "to": "missed_sepsis_counter_loop",
+      "relation": "constrains",
+      "artifact": "安全约束"
+    },
+    {
+      "from": "anchor_safety_thresholds",
+      "to": "post_change_safety_monitor",
+      "relation": "constrains",
+      "artifact": "安全约束"
+    },
+    {
+      "from": "threshold_proposal_loop",
+      "to": "missed_sepsis_counter_loop",
+      "relation": "feeds",
+      "artifact": "本周推荐提案"
+    },
+    {
+      "from": "threshold_proposal_loop",
+      "to": "proposal_arbitration",
+      "relation": "feeds",
+      "artifact": "候选阈值权衡表"
+    },
+    {
+      "from": "missed_sepsis_counter_loop",
+      "to": "proposal_arbitration",
+      "relation": "vetoes",
+      "artifact": "漏报与灵敏度评估 + 否决或放行意见"
+    },
+    {
+      "from": "missed_sepsis_counter_loop",
+      "to": "threshold_proposal_loop",
+      "relation": "revises",
+      "artifact": "被否决原因（要求缩小步长或改用非阈值方案）"
+    },
+    {
+      "from": "label_quality_audit",
+      "to": "proposal_arbitration",
+      "relation": "verifies",
+      "artifact": "标签质量审计结论"
+    },
+    {
+      "from": "proposal_arbitration",
+      "to": "committee_gate",
+      "relation": "escalates",
+      "artifact": "委员会决策包"
+    },
+    {
+      "from": "committee_gate",
+      "to": "post_change_safety_monitor",
+      "relation": "feeds",
+      "artifact": "已批准阈值版本"
+    },
+    {
+      "from": "committee_gate",
+      "to": "stop_and_handoff",
+      "relation": "hands_off",
+      "artifact": "批准/否决决定"
+    },
+    {
+      "from": "post_change_safety_monitor",
+      "to": "threshold_proposal_loop",
+      "relation": "observes",
+      "artifact": "上线后安全监测报告（下一周提案输入）"
+    },
+    {
+      "from": "post_change_safety_monitor",
+      "to": "committee_gate",
+      "relation": "escalates",
+      "artifact": "回滚请求"
+    },
+    {
+      "from": "post_change_safety_monitor",
+      "to": "stop_and_handoff",
+      "relation": "hands_off",
+      "artifact": "上线后安全监测报告 + 回滚请求"
+    }
+  ],
+  "notes": {
+    "designer_judgment": "不按用户原样设计“Agent自动调高阈值”：自主改变临床预警阈值属于高风险医疗决策变更，必须人类批准；目标“误报降一半”改为在灵敏度非劣效约束下的受约束优化。",
+    "open_questions_for_Bruce": [
+      "预警系统是厂商产品还是院内自建？阈值是否在厂商允许可配置范围内？",
+      "医院脓毒症金标准定义与复核人力（每周可复核多少例）？",
+      "灵敏度非劣效界值与安全红线由谁拍板？",
+      "是否先做为期数周的影子模式？"
+    ],
+    "date": "2026-11-15"
+  }
+}
