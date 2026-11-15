@@ -98,6 +98,6 @@ python3 $T simulate graph.json [--fail-node ID]
 python3 $T classify brief.json
 ```
 
-参考：[design-principles.md](references/design-principles.md)（每条检查背后的理由、锚点五问、反指标配对、快慢分层、故障手册、修复顺序）· [graph-spec-v1.1.md](references/graph-spec-v1.1.md)（字段说明与旧格式映射）。
+参考：[design-principles-v1.0.md](references/design-principles-v1.0.md)（每条检查背后的理由、锚点五问、反指标配对、快慢分层、故障手册、修复顺序）· [graph-spec-v1.1.md](references/graph-spec-v1.1.md)（字段说明与旧格式映射）。
 
 致谢：设计思路受 Anita Yin 的 graph-engineering-architect 启发。

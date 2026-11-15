@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>图工程架构师 Plus · Graph Engineering Architect Plus</title>
+<meta name="description" content="一个 Codex / Claude Code Skill 加零依赖命令行工具：把多回路 Agent 系统写成可校验的图，自动找出刷分、循环互证、看守剧场、元回路劫持等自欺漏洞，并按修复顺序给出修法。附药物警戒论文与急诊病历质控示例。">
+<meta name="theme-color" content="#0b1118">
+<meta property="og:title" content="图工程架构师 Plus · Graph Engineering Architect Plus">
+<meta property="og:description" content="让会自我改进的 Agent 系统，不会学会骗自己。">
+<meta property="og:image" content="文档/主图/封面v1.0.jpg">
+<link rel="stylesheet" href="assets/gea-sitev1.0.css">
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <a class="brand" href="#top"><i></i>图工程架构师 Plus</a>
+  <nav class="nav" aria-label="页面导航">
+    <a href="#why">为什么</a><a href="#patterns">11 类病灶</a><a href="#lab">示例对照</a><a href="#repair">修复顺序</a><a href="#cadence">快慢分层</a><a href="#start">快速开始</a><a href="#repo">仓库内容</a><a href="#license">许可</a>
+  </nav>
+  <a class="gh" href="https://github.com/TUANZIDING/graph-engineering-architect-plus">GitHub ↗</a>
+</div></div>
+
+<header class="hero" id="top"><div class="wrap">
+  <div>
+    <span class="pill">Codex / Claude Code Skill · 零依赖 CLI · v1.1</span>
+    <h1>图工程架构师 Plus</h1>
+    <div class="sub">Graph Engineering Architect Plus</div>
+    <p class="lead">多 Agent、多回路的系统越跑分数越好看，不等于越来越对。<br>这套工具把“谁能约束谁、谁拿着优化者碰不到的证据”写成一张可校验的图，<b>自动找出系统会骗自己的结构漏洞。</b></p>
+    <div class="chips"><span>validate 硬约束</span><span>diagnose 11 类病灶</span><span>按修复顺序排序</span><span>init 脚手架</span><span>SVG / Mermaid 拓扑图</span><span>32 个回归测试</span></div>
+    <div class="cta"><a class="btn" href="#lab">看示例对照</a><a class="btn ghost" href="#start">快速开始</a></div>
+  </div>
+  <div class="hero-art"><img src="图片/拓扑图/faers-manuscript-v1.0-sm.webp" alt="FAERS/JADER 药物警戒论文图：人工门、现实锚点、信号分析、独立复算、阴性对照、仲裁、初稿、结论审计、作者确认、收束交接"></div>
+</div></header>
+
+<main>
+<section id="why"><div class="wrap">
+  <div class="kicker">Why</div>
+  <h2>问题不在 Agent 不够多</h2>
+  <p class="intro">单个回路只看得见自己的指标。它分不清“指标变好”和“结果变好”，也看不见自己的目标是否对。加更多 Agent、更多轮重试，往往只是让同一个偏差被更多人确认。</p>
+  <div class="grid3">
+    <div class="card"><h3 style="color:var(--green)">扎根</h3><p>至少一份证据是优化者生成不了、改不了、藏不住的：冻结的数据快照、执行过的测试、原始病历条目。验证者必须拿到它。</p></div>
+    <div class="card"><h3 style="color:var(--amber)">权力</h3><p>可靠性来自“谁能约束、否决、升级、仲裁谁”，而不是箭头多少。没有一条权力边的图，只是装饰。</p></div>
+    <div class="card"><h3 style="color:var(--violet)">分层</h3><p>快回路在边界内动作，慢回路审目标与口径，根判断归人。快层不得改写慢层的目标、裁判和审批规则。</p></div>
+  </div>
+</div></section>
+
+<section id="patterns"><div class="wrap">
+  <div class="kicker">diagnose</div>
+  <h2>自动识别 11 类病灶</h2>
+  <p class="intro">每一类都对应 validate 里的一条或几条硬约束。命中后给出证据、修法和修复层级；全部未命中只说明结构没有漏洞，不证明结论正确。</p>
+  <figure><img src="图片/示意图/十一类病灶v1.0.webp" alt="11 类病灶：刷分、目标错位、回路冲突、测量过期、循环互证、元回路劫持、看守剧场、装饰图、局部成功全局受损、节奏搅动、共识即完成"></figure>
+</div></section>
+
+<section id="lab"><div class="wrap">
+  <div class="kicker">Live examples</div>
+  <h2>示例对照：同一套规则，四张图</h2>
+  <p class="intro">下面的拓扑图与检查结果都由仓库里的示例 JSON 和真实命令输出生成。红框节点是 diagnose 指出的问题所在。</p>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="lab">
+    <div class="svgbox" id="svgbox"></div>
+    <div class="report" id="report"></div>
+  </div>
+</div></section>
+
+<section id="repair"><div class="wrap two">
+  <div>
+    <div class="kicker">repair</div>
+    <h2>从底层修起</h2>
+    <p class="intro">diagnose 把病灶按 repair_layer 排序：根结果与归属 → 现实锚点与来源 → 验证者独立性 → 边的权力与仲裁 → 节奏分离 → 节点实现。一次只动一层；结构有病时，先修扎根和权力，再考虑加 Agent 或重试。</p>
+  </div>
+  <figure style="margin:0"><img src="图片/示意图/修复顺序v1.0-sm.webp" alt="修复顺序六层阶梯"></figure>
+</div></section>
+
+<section id="cadence"><div class="wrap two">
+  <figure style="margin:0"><img src="图片/示意图/快慢分层v1.0-sm.webp" alt="快慢分层：执行、验证、审计、治理、人"></figure>
+  <div>
+    <div class="kicker">cadence</div>
+    <h2>快慢分层</h2>
+    <p class="intro">每个节点写 cadence（或 cadence_tier）。当更快的节点对更慢的节点有“修订 / 约束”边，validate 报 E-CADENCE：快回路在搅动慢变量，会振荡、掩盖因果。执行者对验证、锚点、审计、治理节点有修订边，则报 E-METACAPTURE：改进者能改写自己的裁判。</p>
+  </div>
+</div></section>
+
+<section id="start"><div class="wrap">
+  <div class="kicker">Quick start</div>
+  <h2>快速开始</h2>
+  <div class="two">
+<pre><span class="c"># 安装为 Skill</span>
+git clone https://github.com/TUANZIDING/graph-engineering-architect-plus.git
+cd graph-engineering-architect-plus
+cp -R 工具/graph-engineering-architect-plus ~/.codex/skills/
+cp -R 工具/graph-engineering-architect-plus ~/.claude/skills/
+
+<span class="c"># 跑测试</span>
+python3 验证/项目检查v1.0.py</pre>
+<pre><span class="c"># 命令行（Python 3.10+，零依赖）</span>
+T=工具/graph-engineering-architect-plus/scripts/geaplus-v1.1.py
+python3 $T init "可复现的结论" --root . --slug demo
+python3 $T validate .graph/demo
+python3 $T diagnose 示例/broken-circular-graph-v1.0.json --today 2026-11-15
+python3 $T mermaid  示例/faers-manuscript-graph-v1.1.json
+python3 $T simulate 示例/faers-manuscript-graph-v1.1.json
+python3 $T classify brief.json</pre>
+  </div>
+  <figure><img src="文档/截图/终端诊断截图v1.0.png" alt="终端里 validate 与 diagnose 的真实输出"><figcaption>真实命令输出：旧格式质控图的 validate 结果，以及反例图的 diagnose 结果（按修复层级排序）。</figcaption></figure>
+</div></section>
+
+<section id="repo"><div class="wrap">
+  <div class="kicker">Repository</div>
+  <h2>仓库内容</h2>
+  <table>
+    <tr><th>目录</th><th>内容</th></tr>
+    <tr><td><code>工具/graph-engineering-architect-plus/</code></td><td>可安装的 Skill：SKILL.md、scripts/geaplus-v1.1.py（CLI，v1.0 保留）、references/</td></tr>
+    <tr><td><code>工具/</code></td><td>绘制拓扑图、渲染图片、制作配图、构建网页数据的脚本</td></tr>
+    <tr><td><code>示例/</code></td><td>药物警戒论文正例与反例、急诊病历质控修复前后，附 Mermaid 与示例说明</td></tr>
+    <tr><td><code>文档/</code></td><td>设计手册、规格说明、英文说明、封面与截图</td></tr>
+    <tr><td><code>图片/</code></td><td>拓扑图（SVG + webp）与示意图</td></tr>
+    <tr><td><code>验证/</code></td><td>回归测试（v1.0 21 个、v1.1 32 个）、项目检查脚本、运行记录</td></tr>
+  </table>
+  <div class="warn">边界：结构校验只证明契约完整，不证明领域结论真实、锚点在现实中独立或任务已完成。投稿、推送、发布、删除等外部动作必须单独授权。</div>
+</div></section>
+</main>
+
+<footer id="license"><div class="wrap">
+  <p>© 2026 Haixiang Ding, M.D. · 代码与文档 MIT 许可 · <a href="https://github.com/TUANZIDING/graph-engineering-architect-plus">GitHub</a></p>
+  <p>致谢：设计思路受 Anita Yin 的 graph-engineering-architect 启发；不变量思想参考 luxiaolei/graph-engineering（Apache-2.0）。本仓库代码、文档与示例为独立编写。</p>
+</div></footer>
+<script src="assets/data/examplesv1.0.js"></script>
+<script src="assets/gea-sitev1.0.js"></script>
+</body>
+</html>

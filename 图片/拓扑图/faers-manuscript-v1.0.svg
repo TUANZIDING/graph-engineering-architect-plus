@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1426" width="900" height="1426" font-family="Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#7f8ea3"/></marker><marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#f5b84a"/></marker><marker id="arF" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#b98cff"/></marker><filter id="gl" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="100%" height="100%" fill="#0b1118"/>
+<text x="40" y="52" fill="#e8eef6" font-size="25" font-weight="700">FAERS/JADER 药物警戒论文图（正例）</text>
+<rect x="40" y="66" width="190" height="28" rx="14" fill="none" stroke="#43c59e" stroke-width="1.5"/><text x="135" y="85" fill="#43c59e" font-size="14" text-anchor="middle" font-weight="700">diagnose：健康</text>
+<path d="M450.0,180.0 C450.0,214.8 450.0,200.2 450.0,235.0" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M575.0,148.1 C641.0,173.3 641.0,386.7 578.0,411.9" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M450.0,322.0 C450.0,356.8 450.0,342.2 450.0,377.0" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<path d="M325.0,290.1 C99.0,315.3 99.0,528.7 162.0,553.9" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<path d="M575.0,290.1 C827.0,315.3 827.0,954.7 578.0,979.9" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<path d="M450.0,464.0 C450.0,498.8 290.0,484.2 290.0,519.0" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<path d="M450.0,464.0 C450.0,498.8 610.0,484.2 610.0,519.0" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<path d="M735.0,553.9 C853.0,528.7 853.0,457.3 578.0,432.1" fill="none" stroke="#b98cff" stroke-width="1.6" marker-end="url(#arF)" stroke-dasharray="6 5" opacity="0.92"/>
+<path d="M290.0,606.0 C290.0,640.8 450.0,626.2 450.0,661.0" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M610.0,606.0 C610.0,640.8 450.0,626.2 450.0,661.0" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M165.0,574.1 C73.0,599.3 73.0,1238.7 322.0,1263.9" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M450.0,748.0 C450.0,782.8 450.0,768.2 450.0,803.0" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M450.0,890.0 C450.0,924.8 450.0,910.2 450.0,945.0" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<path d="M450.0,1032.0 C450.0,1066.8 450.0,1052.2 450.0,1087.0" fill="none" stroke="#f5b84a" stroke-width="2.3" marker-end="url(#arA)" opacity="0.92"/>
+<path d="M450.0,1174.0 C450.0,1208.8 450.0,1194.2 450.0,1229.0" fill="none" stroke="#7f8ea3" stroke-width="1.6" marker-end="url(#ar)" opacity="0.92"/>
+<rect x="325.0" y="96" width="250" height="84" rx="12" fill="#121b26" stroke="#f5b84a" stroke-width="1.8"/>
+<rect x="325.0" y="96" width="6" height="84" rx="3" fill="#f5b84a"/>
+<text x="343.0" y="120" fill="#f5b84a" font-size="12.5" font-weight="700">人工门</text>
+<text x="392.0" y="120" fill="#e8eef6" font-size="14" font-weight="700">human-approval</text>
+<text x="343.0" y="144" fill="#a9b6c6" font-size="13">确认目标、方案、锚点与权限</text>
+<rect x="325.0" y="238" width="250" height="84" rx="12" fill="#121b26" stroke="#43c59e" stroke-width="1.8"/>
+<rect x="325.0" y="238" width="6" height="84" rx="3" fill="#43c59e"/>
+<text x="343.0" y="262" fill="#43c59e" font-size="12.5" font-weight="700">现实锚点</text>
+<text x="405.0" y="262" fill="#e8eef6" font-size="14" font-weight="700">data-anchor</text>
+<text x="343.0" y="286" fill="#a9b6c6" font-size="13">提供执行者无法改写的数据快照与方案</text>
+<rect x="325.0" y="380" width="250" height="84" rx="12" fill="#121b26" stroke="#5b9cff" stroke-width="1.8"/>
+<rect x="325.0" y="380" width="6" height="84" rx="3" fill="#5b9cff"/>
+<text x="343.0" y="404" fill="#5b9cff" font-size="12.5" font-weight="700">执行回路</text>
+<text x="405.0" y="404" fill="#e8eef6" font-size="14" font-weight="700">signal-analysis</text>
+<text x="343.0" y="428" fill="#a9b6c6" font-size="13">按方案做去重、映射与不相称性分析</text>
+<rect x="165.0" y="522" width="250" height="84" rx="12" fill="#121b26" stroke="#b98cff" stroke-width="1.8"/>
+<rect x="165.0" y="522" width="6" height="84" rx="3" fill="#b98cff"/>
+<text x="183.0" y="546" fill="#b98cff" font-size="12.5" font-weight="700">验证回路</text>
+<text x="245.0" y="546" fill="#e8eef6" font-size="14" font-weight="700">independent-rerun</text>
+<text x="183.0" y="570" fill="#a9b6c6" font-size="13">不看主代码，按方案重算核心信号</text>
+<rect x="485.0" y="522" width="250" height="84" rx="12" fill="#121b26" stroke="#ff8fb1" stroke-width="1.8"/>
+<rect x="485.0" y="522" width="6" height="84" rx="3" fill="#ff8fb1"/>
+<text x="503.0" y="546" fill="#ff8fb1" font-size="12.5" font-weight="700">反指标</text>
+<text x="552.0" y="546" fill="#e8eef6" font-size="14" font-weight="700">negative-control</text>
+<text x="503.0" y="570" fill="#a9b6c6" font-size="13">用预设阴性对照药物检查假阳性率，防</text>
+<text x="503.0" y="589" fill="#a9b6c6" font-size="13">止为增加信号而放宽</text>
+<rect x="325.0" y="664" width="250" height="84" rx="12" fill="#121b26" stroke="#e7d36f" stroke-width="1.8"/>
+<rect x="325.0" y="664" width="6" height="84" rx="3" fill="#e7d36f"/>
+<text x="343.0" y="688" fill="#e7d36f" font-size="12.5" font-weight="700">仲裁</text>
+<text x="379.0" y="688" fill="#e8eef6" font-size="14" font-weight="700">arbiter</text>
+<text x="343.0" y="712" fill="#a9b6c6" font-size="13">复算与反指标冲突时按冻结规则裁决</text>
+<rect x="325.0" y="806" width="250" height="84" rx="12" fill="#121b26" stroke="#7aa7ff" stroke-width="1.8"/>
+<rect x="325.0" y="806" width="6" height="84" rx="3" fill="#7aa7ff"/>
+<text x="343.0" y="830" fill="#7aa7ff" font-size="12.5" font-weight="700">综合</text>
+<text x="379.0" y="830" fill="#e8eef6" font-size="14" font-weight="700">drafting</text>
+<text x="343.0" y="854" fill="#a9b6c6" font-size="13">只用已接受信号写初稿并逐条标注来源</text>
+<text x="343.0" y="873" fill="#a9b6c6" font-size="13">计数</text>
+<rect x="325.0" y="948" width="250" height="84" rx="12" fill="#121b26" stroke="#ff9f6b" stroke-width="1.8"/>
+<rect x="325.0" y="948" width="6" height="84" rx="3" fill="#ff9f6b"/>
+<text x="343.0" y="972" fill="#ff9f6b" font-size="12.5" font-weight="700">审计回路</text>
+<text x="405.0" y="972" fill="#e8eef6" font-size="14" font-weight="700">claim-audit</text>
+<text x="343.0" y="996" fill="#a9b6c6" font-size="13">逐句核对结论与病例计数，标出夸大因</text>
+<text x="343.0" y="1015" fill="#a9b6c6" font-size="13">果的措辞</text>
+<rect x="325.0" y="1090" width="250" height="84" rx="12" fill="#121b26" stroke="#f5b84a" stroke-width="1.8"/>
+<rect x="325.0" y="1090" width="6" height="84" rx="3" fill="#f5b84a"/>
+<text x="343.0" y="1114" fill="#f5b84a" font-size="12.5" font-weight="700">人工门</text>
+<text x="392.0" y="1114" fill="#e8eef6" font-size="14" font-weight="700">author-gate</text>
+<text x="343.0" y="1138" fill="#a9b6c6" font-size="13">作者确认初稿；投稿另需单独授权</text>
+<rect x="325.0" y="1232" width="250" height="84" rx="12" fill="#121b26" stroke="#8b98a9" stroke-width="1.8"/>
+<rect x="325.0" y="1232" width="6" height="84" rx="3" fill="#8b98a9"/>
+<text x="343.0" y="1256" fill="#8b98a9" font-size="12.5" font-weight="700">收束交接</text>
+<text x="405.0" y="1256" fill="#e8eef6" font-size="14" font-weight="700">stop-handoff</text>
+<text x="343.0" y="1280" fill="#a9b6c6" font-size="13">收束或在失败时交接</text>
+<rect x="430.0" y="197.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="450.0" y="212.0" fill="#f5b84a" font-size="12" text-anchor="middle">约束</text>
+<rect x="604.9" y="270.0" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="624.9" y="284.5" fill="#f5b84a" font-size="12" text-anchor="middle">约束</text>
+<rect x="430.0" y="339.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="450.0" y="354.0" fill="#7f8ea3" font-size="12" text-anchor="middle">输入</text>
+<rect x="115.1" y="412.0" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="135.1" y="426.5" fill="#7f8ea3" font-size="12" text-anchor="middle">锚定</text>
+<rect x="744.4" y="625.0" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="764.4" y="639.5" fill="#7f8ea3" font-size="12" text-anchor="middle">锚定</text>
+<rect x="350.0" y="481.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="370.0" y="496.0" fill="#7f8ea3" font-size="12" text-anchor="middle">输入</text>
+<rect x="510.0" y="481.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="530.0" y="496.0" fill="#7f8ea3" font-size="12" text-anchor="middle">输入</text>
+<rect x="783.9" y="483.0" width="40" height="20" rx="10" fill="#0b1118" stroke="#b98cff" stroke-width="0.9"/><text x="803.9" y="497.5" fill="#b98cff" font-size="12" text-anchor="middle">观察</text>
+<rect x="350.0" y="623.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="370.0" y="638.0" fill="#f5b84a" font-size="12" text-anchor="middle">升级</text>
+<rect x="510.0" y="623.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="530.0" y="638.0" fill="#f5b84a" font-size="12" text-anchor="middle">升级</text>
+<rect x="95.6" y="909.0" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="115.6" y="923.5" fill="#f5b84a" font-size="12" text-anchor="middle">否决</text>
+<rect x="430.0" y="765.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="450.0" y="780.0" fill="#f5b84a" font-size="12" text-anchor="middle">约束</text>
+<rect x="430.0" y="907.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="450.0" y="922.0" fill="#7f8ea3" font-size="12" text-anchor="middle">输入</text>
+<rect x="430.0" y="1049.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#f5b84a" stroke-width="0.9"/><text x="450.0" y="1064.0" fill="#f5b84a" font-size="12" text-anchor="middle">约束</text>
+<rect x="430.0" y="1191.5" width="40" height="20" rx="10" fill="#0b1118" stroke="#7f8ea3" stroke-width="0.9"/><text x="450.0" y="1206.0" fill="#7f8ea3" font-size="12" text-anchor="middle">交接</text>
+<line x1="40" y1="1386" x2="70" y2="1386" stroke="#7f8ea3" stroke-width="2.2" stroke-dasharray=""/><text x="78" y="1391" fill="#a9b6c6" font-size="13">数据流</text>
+<line x1="141" y1="1386" x2="171" y2="1386" stroke="#f5b84a" stroke-width="2.2" stroke-dasharray=""/><text x="179" y="1391" fill="#a9b6c6" font-size="13">权力边：约束 / 否决 / 仲裁 / 升级</text>
+<line x1="422" y1="1386" x2="452" y2="1386" stroke="#b98cff" stroke-width="2.2" stroke-dasharray="6 5"/><text x="460" y="1391" fill="#a9b6c6" font-size="13">反馈边：核验 / 观察 / 修订</text>
+</svg>

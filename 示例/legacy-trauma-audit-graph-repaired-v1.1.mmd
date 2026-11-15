@@ -1,0 +1,16 @@
+flowchart LR
+  fill["fill<br/><small>execution_loop</small>"]
+  check[/"check<br/><small>verification_loop</small>"/]
+  burden[/"burden<br/><small>counter_metric_loop</small>"/]
+  source[("source<br/><small>anchor</small>")]
+  sign{{"sign<br/><small>human_gate</small>"}}
+  close(["close<br/><small>stop_handoff</small>"])
+  source -.->|anchors: 原始护理与检验记录| fill
+  fill -->|feeds: 待审病历| check
+  check -->|verifies: 核对报告| fill
+  burden --x|vetoes: 未解决的模板化警示| sign
+  check -->|constrains: 核对结论| sign
+  sign -->|hands_off: 归档决定| close
+  source -.->|anchors: 原始护理与检验记录| check
+  fill -->|feeds: 待审病历| burden
+  check -->|feeds: 核对报告| burden

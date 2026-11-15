@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this skill or tool, please cite it as below."
+type: software
+title: "图工程架构师 Plus / Graph Engineering Architect Plus: grounded, self-checking graphs of interacting improvement loops"
+version: 1.1.0
+date-released: 2026-11-15
+authors:
+  - family-names: Ding
+    given-names: Haixiang
+    affiliation: "Affiliated Hospital of Jiangnan University; Soochow University"
+repository-code: "https://github.com/TUANZIDING/graph-engineering-architect-plus"
+url: "https://tuanziding.github.io/graph-engineering-architect-plus/"
+license: MIT
+keywords:
+  - agent architecture
+  - graph engineering
+  - multi-agent systems
+  - Goodhart's law
+  - verification
+  - Codex skill
+  - Claude Code skill
+  - research workflow

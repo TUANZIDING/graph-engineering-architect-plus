@@ -1,4 +1,4 @@
-"""Regression tests for geaplus v1.0. Run: python3 -m unittest discover -s tests -p 'test-*.py' -v"""
+"""Regression tests for geaplus v1.1. Run: python3 -m unittest discover -s tests -p 'test-*.py' -v"""
 
 import copy
 import datetime as dt
@@ -8,12 +8,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("geaplus", ROOT / "skill" / "scripts" / "geaplus-v1.0.py")
+spec = importlib.util.spec_from_file_location("geaplus", ROOT / "工具" / "graph-engineering-architect-plus" / "scripts" / "geaplus-v1.1.py")
 gea = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gea)
 
-GOOD = json.loads((ROOT / "examples" / "faers-manuscript-graph-v1.0.json").read_text(encoding="utf-8"))
-BAD = json.loads((ROOT / "examples" / "broken-circular-graph-v1.0.json").read_text(encoding="utf-8"))
+GOOD = json.loads((ROOT / "示例" / "faers-manuscript-graph-v1.1.json").read_text(encoding="utf-8"))
+BAD = json.loads((ROOT / "示例" / "broken-circular-graph-v1.0.json").read_text(encoding="utf-8"))
 TODAY = dt.date(2026, 11, 15)
 
 
@@ -97,11 +97,6 @@ class Validate(unittest.TestCase):
         s.update(state="completed", approval={"status": "approved", "approved_by": "Bruce"})
         self.assertIn("E-DONE", codes(s))
 
-    def test_upstream_v10_spec_stays_compatible(self):
-        up = ROOT / "upstream" / "2023Anita-graph-engineering-agent-builder" / "examples" / "approved-graph.json"
-        if up.exists():
-            s = json.loads(up.read_text(encoding="utf-8"))
-            self.assertNotIn("E-LOOPBOUND", codes(s))
 
 
 class Diagnose(unittest.TestCase):
@@ -140,6 +135,79 @@ class Simulate(unittest.TestCase):
 
     def test_rejects_unapproved(self):
         self.assertEqual(gea.simulate(GOOD, None)["status"], "rejected")
+
+
+
+ORIG = json.loads((ROOT / "示例" / "legacy-trauma-audit-graph-v1.1.json").read_text(encoding="utf-8"))
+REPAIRED = json.loads((ROOT / "示例" / "legacy-trauma-audit-graph-repaired-v1.1.json").read_text(encoding="utf-8"))
+
+
+class V11(unittest.TestCase):
+    def test_legacy_schema_is_read(self):
+        n = gea.normalize(ORIG)
+        self.assertEqual(n["root_goal"]["human_owner"], "急诊科质控主任")
+        self.assertEqual(node(n, "fill")["contract"]["inputs"], ["质控模板", "原始护理与检验记录"])
+
+    def test_legacy_example_has_watcher_theater(self):
+        c = codes(ORIG)
+        self.assertIn("E-THEATER", c)
+        self.assertIn("E-VNOANCHOR", c)
+
+    def test_repaired_legacy_is_healthy(self):
+        self.assertEqual(codes(REPAIRED), set())
+        self.assertEqual(gea.diagnose(REPAIRED, TODAY, None)["status"], "healthy")
+
+    def test_legacy_rules_enforced(self):
+        s = copy.deepcopy(REPAIRED)
+        s["governance"]["goal_change"] = "agent"
+        s["verification"]["checks"][0]["verifier_node"] = "fill"
+        c = codes(s)
+        self.assertIn("O-GOAL", c)
+        self.assertIn("O-CHECKS", c)
+
+    def test_placeholder_rejected(self):
+        s = copy.deepcopy(GOOD)
+        s["root_goal"]["observable_success"] = "TODO later"
+        self.assertIn("E-PLACEHOLDER", codes(s))
+
+    def test_meta_capture(self):
+        s = copy.deepcopy(GOOD)
+        s["edges"].append({"from": "signal-analysis", "to": "negative-control", "relation": "revises", "artifact": "looser threshold"})
+        self.assertIn("E-METACAPTURE", codes(s))
+
+    def test_cadence_thrashing(self):
+        s = copy.deepcopy(REPAIRED)
+        s["nodes"].append({"id": "gov", "kind": "governance_loop", "responsibility": "review targets", "owner": "board",
+                           "cadence": "Quarterly", "inputs": ["x"], "outputs": ["targets"]})
+        s["edges"].append({"from": "gov", "to": "close", "relation": "hands_off", "artifact": "targets"})
+        s["edges"].append({"from": "fill", "to": "gov", "relation": "constrains", "artifact": "new target"})
+        pats = {p["pattern"] for p in gea.diagnose(s, TODAY, None)["patterns"]}
+        self.assertIn("cadence_thrashing", pats)
+
+    def test_decorative(self):
+        s = copy.deepcopy(GOOD)
+        for e in s["edges"]:
+            if e["relation"] in {"constrains", "vetoes", "escalates", "arbitrates"}:
+                e["relation"] = "feeds"
+        self.assertIn("E-DECORATIVE", codes(s))
+
+    def test_no_counter_metric(self):
+        s = copy.deepcopy(BAD)
+        node(s, "claim-audit")["kind"] = "verification_loop"
+        self.assertIn("E-NOCOUNTER", codes(s))
+
+    def test_repair_order_sorted(self):
+        layers = [p["repair_layer"] for p in gea.diagnose(BAD, TODAY, None)["patterns"]]
+        self.assertEqual(layers, sorted(layers))
+
+    def test_init_scaffold_fails_until_filled(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            out = gea.init_graph("可复现的结论", Path(d), "demo")
+            for f in ("graph.json", "graph-spec.md", "validation-report.md", "handoff.md"):
+                self.assertTrue((out / f).exists())
+            spec = json.loads((out / "graph.json").read_text(encoding="utf-8"))
+            self.assertIn("E-PLACEHOLDER", codes(spec))
 
 
 if __name__ == "__main__":
