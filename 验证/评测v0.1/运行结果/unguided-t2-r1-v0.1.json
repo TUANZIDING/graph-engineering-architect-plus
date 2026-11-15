@@ -1,0 +1,347 @@
+{
+  "schema_version": "1.1",
+  "title": "Radiation-induced skeletal muscle injury English review: search-to-revision writing system",
+  "mode": "graph_plus_loop",
+  "rationale": "Multi-stage work (search, screening, extraction, drafting, revision) with three distinct failure risks (fabricated references, wrong numbers, overclaimed novelty) that each need an independent verifier anchored to external ground truth, plus iterative draft-revise loops. A linear workflow cannot express independent verification and counter-metric pressure against the drafter; a single loop cannot separate the single-writer resources. Submission stays with Bruce.",
+  "state": "draft",
+  "root_goal": {
+    "statement": "Produce a submission-ready English narrative/systematic-style review on radiation-induced skeletal muscle injury in which every reference exists and supports its sentence, every number matches its source, and every conclusion is no stronger than its evidence.",
+    "human_owner": "Bruce",
+    "observable_success": "Bruce receives a final manuscript package where (a) 100% of references resolve by DOI/PMID in PubMed/Crossref and match title/authors/year, (b) 100% of numeric claims are traced to a source locator (paper + page/table/figure) and match, (c) 0 open overclaim flags at severity high, (d) PRISMA-style search log is reproducible; Bruce signs off at the final human gate.",
+    "metrics": [
+      {"name": "reference_existence_rate", "target": "1.0", "direction": "must_equal"},
+      {"name": "claim_citation_support_rate", "target": ">=0.98, remaining flagged to Bruce", "direction": "maximize"},
+      {"name": "numeric_trace_match_rate", "target": "1.0", "direction": "must_equal"},
+      {"name": "high_severity_overclaim_count", "target": "0", "direction": "minimize"},
+      {"name": "coverage_of_protocol_questions", "target": "all approved questions addressed", "direction": "maximize"}
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "query PubMed, Web of Science, Scopus, Embase, Crossref and Google Scholar with the approved search strategy",
+      "download or read open-access and Bruce-provided full texts",
+      "write and revise internal draft files, evidence tables and verification reports",
+      "flag conflicts and escalate to Bruce"
+    ],
+    "forbidden_actions": [
+      "submit the manuscript to any journal or preprint server",
+      "email editors, authors or co-authors on Bruce's behalf",
+      "cite any reference not resolved by DOI/PMID/ISBN against an external database",
+      "insert any number not traced to a source locator",
+      "change approved inclusion/exclusion criteria or research questions without Bruce",
+      "paste unpublished or proprietary data into the manuscript",
+      "pay article processing charges or any fees"
+    ]
+  },
+  "frozen_rules": [
+    "No reference may enter the draft unless it is in the verified reference library with a resolved DOI/PMID and matching metadata.",
+    "Every sentence with a citation must be supported by text in the cited source, recorded as a quote/locator in the evidence table.",
+    "Every number (dose, Gy, fraction, %, n, effect size, p, CI, time point, species) must carry a source locator and be checked verbatim against the source.",
+    "Claim strength must not exceed evidence level: animal or in vitro findings are not phrased as clinical effects; association is not phrased as causation; 'first', 'novel', 'paradigm' wording requires explicit evidence-based justification and is flagged by default.",
+    "Verifiers run in fresh-independent context and never read the drafter's reasoning, only the draft text plus anchors.",
+    "Approved protocol (questions, databases, date window, inclusion/exclusion) is frozen after Bruce's gate.",
+    "Submission is decided and performed only by Bruce."
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 9,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 400
+  },
+  "failure_policy": "On any verifier failure the specific claim/reference/number is returned to drafting with the failure report; after max_iterations without passing, the item is removed from the draft or marked [UNVERIFIED] and escalated to Bruce. Database or full-text access failure pauses the affected node and escalates; never fall back to model memory for references or numbers. Budget exhaustion triggers stop_handoff with the current verified state.",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "final package passes all verifiers and is ready for Bruce's review",
+      "any loop reaches max_iterations with unresolved high-severity issues",
+      "budget max_cost_units reached",
+      "anchor database unreachable or full text unavailable for a load-bearing source",
+      "arbitration cannot resolve a drafter-verifier disagreement under the priority policy",
+      "any action would require a forbidden action (submission, fees, external email)"
+    ],
+    "artifact": "handoff package: current manuscript, verified reference library (.bib/.ris with DOI/PMID), evidence table with locators, numeric trace sheet, overclaim audit log, PRISMA search log, open-issues list"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_bibliographic_db",
+      "source": "PubMed/MEDLINE and Crossref DOI resolution (plus publisher landing page)",
+      "evidence_form": "resolved record: DOI/PMID, title, authors, journal, year, volume, pages, retraction status",
+      "owner": "Bruce",
+      "freshness_rule": "re-resolve every reference at verification time and again before final handoff; check retraction status",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_fulltext_corpus",
+      "source": "full-text PDFs / HTML of included studies (open access or supplied by Bruce)",
+      "evidence_form": "verbatim text spans with page/table/figure locator",
+      "owner": "Bruce",
+      "freshness_rule": "corpus is the version-of-record; replace only if erratum/correction is published",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_approved_protocol",
+      "source": "review protocol approved by Bruce at protocol_gate",
+      "evidence_form": "signed protocol document: questions, search strings, databases, date window, inclusion/exclusion, target journal style",
+      "owner": "Bruce",
+      "freshness_rule": "changes only via Bruce at protocol_gate",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "Bruce's topic scope and target journal",
+    "paywalled full texts supplied by Bruce"
+  ],
+  "nodes": [
+    {
+      "id": "anchor_bibliographic_db",
+      "kind": "anchor",
+      "responsibility": "External ground truth for existence and metadata of every reference.",
+      "owner": "Bruce",
+      "contract": {"inputs": ["DOI/PMID queries"], "outputs": ["resolved bibliographic records"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_fulltext_corpus",
+      "kind": "anchor",
+      "responsibility": "External ground truth for what each source actually says and reports numerically.",
+      "owner": "Bruce",
+      "contract": {"inputs": ["Bruce-supplied and open-access full texts"], "outputs": ["source text spans with locators"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_approved_protocol",
+      "kind": "anchor",
+      "responsibility": "Frozen scope, questions and eligibility criteria.",
+      "owner": "Bruce",
+      "contract": {"inputs": ["protocol approval"], "outputs": ["frozen protocol"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "protocol_drafting",
+      "kind": "execution",
+      "responsibility": "Draft review questions, search strings per database, date window, inclusion/exclusion criteria, outline and target journal style for Bruce's approval.",
+      "owner": "agent",
+      "contract": {"inputs": ["Bruce's topic scope and target journal"], "outputs": ["draft protocol"]},
+      "writes": ["protocol_draft"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "protocol_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce approves or edits the protocol; approval freezes it as an anchor.",
+      "owner": "Bruce",
+      "contract": {"inputs": ["draft protocol"], "outputs": ["protocol approval"]},
+      "cadence_tier": "human"
+    },
+    {
+      "id": "literature_search",
+      "kind": "execution",
+      "responsibility": "Run the frozen search strategy in the approved databases; export records with DOI/PMID; deduplicate; log counts for PRISMA.",
+      "owner": "agent",
+      "contract": {"inputs": ["frozen protocol"], "outputs": ["candidate record set", "PRISMA search log"]},
+      "evidence_sources": ["anchor_bibliographic_db", "anchor_approved_protocol"],
+      "writes": ["candidate_records", "prisma_log"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "screening_loop",
+      "kind": "execution_loop",
+      "responsibility": "Title/abstract then full-text screening against frozen criteria with a reason for every exclusion; uncertain items go to Bruce.",
+      "owner": "agent",
+      "contract": {"inputs": ["candidate record set", "frozen protocol", "source text spans with locators"], "outputs": ["included study list with reasons", "excluded list with reasons", "uncertain list"]},
+      "max_iterations": 2,
+      "evidence_sources": ["anchor_approved_protocol", "anchor_fulltext_corpus"],
+      "writes": ["inclusion_decisions"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "screening_audit",
+      "kind": "audit_loop",
+      "responsibility": "Independent re-screen of a random 20% sample plus all uncertain items; report disagreement rate; disagreement >10% sends screening back.",
+      "owner": "agent",
+      "context_scope": "fresh-independent",
+      "contract": {"inputs": ["included study list with reasons", "excluded list with reasons", "frozen protocol"], "outputs": ["screening audit report"]},
+      "max_iterations": 2,
+      "evidence_sources": ["anchor_approved_protocol", "anchor_fulltext_corpus"],
+      "writes": ["screening_audit_report"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "evidence_extraction",
+      "kind": "execution",
+      "responsibility": "Build the evidence table: per study model (species/cell/human), radiation dose/fractionation, muscle outcomes, mechanisms, key numbers, evidence level, each with verbatim quote and page/table locator.",
+      "owner": "agent",
+      "contract": {"inputs": ["included study list with reasons", "source text spans with locators"], "outputs": ["evidence table with locators", "verified-candidate reference library"]},
+      "evidence_sources": ["anchor_fulltext_corpus", "anchor_bibliographic_db"],
+      "writes": ["evidence_table", "reference_library"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "drafting_loop",
+      "kind": "execution_loop",
+      "responsibility": "Write and revise the manuscript sections using only the evidence table and reference library; each citation and number tagged with evidence-table row ID; respond to verifier and auditor reports.",
+      "owner": "agent",
+      "contract": {"inputs": ["evidence table with locators", "verified-candidate reference library", "frozen protocol", "arbitration rulings", "Bruce revision comments"], "outputs": ["manuscript draft with claim tags"]},
+      "max_iterations": 4,
+      "optimizes": "coverage_of_protocol_questions",
+      "evidence_sources": ["evidence_table", "reference_library"],
+      "writes": ["manuscript_draft"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "citation_verifier",
+      "kind": "verification_loop",
+      "responsibility": "For every reference: resolve DOI/PMID in PubMed/Crossref, match title/authors/year/journal, check retraction; for every cited sentence confirm the source text supports it. Any unresolved reference is a hard fail.",
+      "owner": "agent",
+      "context_scope": "fresh-independent",
+      "contract": {"inputs": ["manuscript draft with claim tags", "resolved bibliographic records", "source text spans with locators"], "outputs": ["citation verification report"]},
+      "max_iterations": 4,
+      "evidence_sources": ["anchor_bibliographic_db", "anchor_fulltext_corpus"],
+      "writes": ["citation_report"],
+      "side_effect": "none",
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "numeric_verifier",
+      "kind": "verification_loop",
+      "responsibility": "Extract every number/unit/species/time point from the draft and compare against the source span directly (not against the evidence table alone); mismatch, unit error or missing locator is a hard fail.",
+      "owner": "agent",
+      "context_scope": "fresh-independent",
+      "contract": {"inputs": ["manuscript draft with claim tags", "source text spans with locators"], "outputs": ["numeric trace sheet and mismatch report"]},
+      "max_iterations": 4,
+      "evidence_sources": ["anchor_fulltext_corpus"],
+      "writes": ["numeric_report"],
+      "side_effect": "none",
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "overclaim_auditor",
+      "kind": "counter_metric_loop",
+      "responsibility": "Counter-metric to the drafter's coverage/novelty pressure: grade each conclusion's strength against evidence level (in vitro / animal / clinical; association vs causation; n, replication), flag 'first/novel/breakthrough' language, extrapolation across species or dose, and gaps presented as findings.",
+      "owner": "agent",
+      "context_scope": "fresh-independent",
+      "contract": {"inputs": ["manuscript draft with claim tags", "source text spans with locators"], "outputs": ["overclaim audit log with severity"]},
+      "max_iterations": 4,
+      "optimizes": "high_severity_overclaim_count",
+      "evidence_sources": ["anchor_fulltext_corpus"],
+      "writes": ["overclaim_log"],
+      "side_effect": "none",
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "conflict_arbitration",
+      "kind": "arbitration",
+      "responsibility": "Resolve disagreements between drafter and verifiers/auditor; decide revise, remove, soften or escalate to Bruce.",
+      "owner": "agent",
+      "priority_policy": "anchor evidence > frozen rules > verifier/auditor findings > drafter preference; unresolved after 2 rounds escalates to Bruce",
+      "contract": {"inputs": ["citation verification report", "numeric trace sheet and mismatch report", "overclaim audit log with severity"], "outputs": ["arbitration rulings", "escalation items"]},
+      "writes": ["arbitration_log"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "governance_monitor",
+      "kind": "governance_loop",
+      "responsibility": "Track iterations, budget, verifier pass rates and frozen-rule compliance; detect verifier rubber-stamping (passing without anchor checks) and score drift; trigger stop_handoff.",
+      "owner": "agent",
+      "contract": {"inputs": ["citation verification report", "numeric trace sheet and mismatch report", "overclaim audit log with severity", "screening audit report", "arbitration rulings"], "outputs": ["governance status", "stop signal"]},
+      "max_iterations": 10,
+      "writes": ["governance_log"],
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "package_reducer",
+      "kind": "reducer",
+      "responsibility": "Assemble the final package only when all verifiers pass: manuscript, verified .bib, evidence table, numeric trace sheet, overclaim log, PRISMA log, open issues.",
+      "owner": "agent",
+      "contract": {"inputs": ["manuscript draft with claim tags", "citation verification report", "numeric trace sheet and mismatch report", "overclaim audit log with severity", "PRISMA search log", "governance status"], "outputs": ["review package"]},
+      "writes": ["review_package"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "final_review_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce reviews content, spot-checks references and numbers, and either returns revision comments or accepts the package. Submission decision stays with Bruce outside this system.",
+      "owner": "Bruce",
+      "contract": {"inputs": ["review package", "escalation items"], "outputs": ["Bruce revision comments", "acceptance"]},
+      "cadence_tier": "human"
+    },
+    {
+      "id": "handoff",
+      "kind": "stop_handoff",
+      "responsibility": "Deliver the package or the partial verified state with open issues to Bruce and stop; no submission or external contact.",
+      "owner": "Bruce",
+      "contract": {"inputs": ["acceptance", "stop signal", "review package"], "outputs": ["handoff package"]},
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "protocol_drafting", "to": "protocol_gate", "relation": "feeds", "artifact": "draft protocol"},
+    {"from": "protocol_gate", "to": "anchor_approved_protocol", "relation": "feeds", "artifact": "protocol approval"},
+    {"from": "anchor_approved_protocol", "to": "literature_search", "relation": "anchors", "artifact": "frozen protocol"},
+    {"from": "anchor_approved_protocol", "to": "screening_loop", "relation": "constrains", "artifact": "frozen protocol"},
+    {"from": "anchor_approved_protocol", "to": "screening_audit", "relation": "anchors", "artifact": "frozen protocol"},
+    {"from": "anchor_approved_protocol", "to": "drafting_loop", "relation": "constrains", "artifact": "frozen protocol"},
+    {"from": "anchor_bibliographic_db", "to": "literature_search", "relation": "anchors", "artifact": "resolved bibliographic records"},
+    {"from": "literature_search", "to": "screening_loop", "relation": "feeds", "artifact": "candidate record set"},
+    {"from": "anchor_fulltext_corpus", "to": "screening_loop", "relation": "anchors", "artifact": "source text spans with locators"},
+    {"from": "screening_loop", "to": "screening_audit", "relation": "feeds", "artifact": "included study list with reasons"},
+    {"from": "anchor_fulltext_corpus", "to": "screening_audit", "relation": "anchors", "artifact": "source text spans with locators"},
+    {"from": "screening_audit", "to": "screening_loop", "relation": "revises", "artifact": "screening audit report"},
+    {"from": "screening_audit", "to": "evidence_extraction", "relation": "verifies", "artifact": "screening audit report"},
+    {"from": "screening_loop", "to": "evidence_extraction", "relation": "feeds", "artifact": "included study list with reasons"},
+    {"from": "anchor_fulltext_corpus", "to": "evidence_extraction", "relation": "anchors", "artifact": "source text spans with locators"},
+    {"from": "anchor_bibliographic_db", "to": "evidence_extraction", "relation": "anchors", "artifact": "resolved bibliographic records"},
+    {"from": "evidence_extraction", "to": "drafting_loop", "relation": "feeds", "artifact": "evidence table with locators"},
+    {"from": "drafting_loop", "to": "citation_verifier", "relation": "feeds", "artifact": "manuscript draft with claim tags"},
+    {"from": "drafting_loop", "to": "numeric_verifier", "relation": "feeds", "artifact": "manuscript draft with claim tags"},
+    {"from": "drafting_loop", "to": "overclaim_auditor", "relation": "feeds", "artifact": "manuscript draft with claim tags"},
+    {"from": "anchor_bibliographic_db", "to": "citation_verifier", "relation": "anchors", "artifact": "resolved bibliographic records"},
+    {"from": "anchor_fulltext_corpus", "to": "citation_verifier", "relation": "anchors", "artifact": "source text spans with locators"},
+    {"from": "anchor_fulltext_corpus", "to": "numeric_verifier", "relation": "anchors", "artifact": "source text spans with locators"},
+    {"from": "anchor_fulltext_corpus", "to": "overclaim_auditor", "relation": "anchors", "artifact": "source text spans with locators"},
+    {"from": "citation_verifier", "to": "conflict_arbitration", "relation": "verifies", "artifact": "citation verification report"},
+    {"from": "numeric_verifier", "to": "conflict_arbitration", "relation": "verifies", "artifact": "numeric trace sheet and mismatch report"},
+    {"from": "overclaim_auditor", "to": "conflict_arbitration", "relation": "vetoes", "artifact": "overclaim audit log with severity"},
+    {"from": "conflict_arbitration", "to": "drafting_loop", "relation": "revises", "artifact": "arbitration rulings"},
+    {"from": "conflict_arbitration", "to": "final_review_gate", "relation": "escalates", "artifact": "escalation items"},
+    {"from": "citation_verifier", "to": "governance_monitor", "relation": "observes", "artifact": "citation verification report"},
+    {"from": "numeric_verifier", "to": "governance_monitor", "relation": "observes", "artifact": "numeric trace sheet and mismatch report"},
+    {"from": "overclaim_auditor", "to": "governance_monitor", "relation": "observes", "artifact": "overclaim audit log with severity"},
+    {"from": "screening_audit", "to": "governance_monitor", "relation": "observes", "artifact": "screening audit report"},
+    {"from": "conflict_arbitration", "to": "governance_monitor", "relation": "observes", "artifact": "arbitration rulings"},
+    {"from": "governance_monitor", "to": "drafting_loop", "relation": "constrains", "artifact": "governance status"},
+    {"from": "governance_monitor", "to": "package_reducer", "relation": "constrains", "artifact": "governance status"},
+    {"from": "governance_monitor", "to": "handoff", "relation": "hands_off", "artifact": "stop signal"},
+    {"from": "drafting_loop", "to": "package_reducer", "relation": "feeds", "artifact": "manuscript draft with claim tags"},
+    {"from": "citation_verifier", "to": "package_reducer", "relation": "verifies", "artifact": "citation verification report"},
+    {"from": "numeric_verifier", "to": "package_reducer", "relation": "verifies", "artifact": "numeric trace sheet and mismatch report"},
+    {"from": "overclaim_auditor", "to": "package_reducer", "relation": "verifies", "artifact": "overclaim audit log with severity"},
+    {"from": "literature_search", "to": "package_reducer", "relation": "feeds", "artifact": "PRISMA search log"},
+    {"from": "package_reducer", "to": "final_review_gate", "relation": "feeds", "artifact": "review package"},
+    {"from": "final_review_gate", "to": "drafting_loop", "relation": "revises", "artifact": "Bruce revision comments"},
+    {"from": "final_review_gate", "to": "handoff", "relation": "hands_off", "artifact": "acceptance"}
+  ]
+}

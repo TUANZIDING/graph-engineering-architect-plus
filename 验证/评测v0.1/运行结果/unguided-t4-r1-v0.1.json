@@ -1,0 +1,296 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊医学选择题自我改进出题系统控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "存在多个相互制衡的职责：生成、指南一致性独立验证、带教老师人工发布门、满意度驱动的风格优化循环，以及防止满意度被刷高（Goodhart）的反指标循环和指南更新后的回溯审计。风格改进是持续循环，正确性与发布是图结构中的硬约束，因此为 graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "批量生成与现行急诊指南一致、经带教老师审核的急诊医学单选题供实习医生练习，并在不牺牲正确性与教学效度的前提下，依据学生满意度持续改进出题风格。",
+    "human_owner": "Bruce",
+    "observable_success": "已发布题目 100% 经带教老师签字；抽样复核中答案与现行指南不一致率为 0（每个发布批次≥10% 独立复核）；满意度提升的同时，教师退回率、题目区分度、难度分布和学生答题正确率相关学习指标不劣化。",
+    "metrics": [
+      {"name": "guideline_concordance_rate", "role": "primary_constraint", "target": "1.0 on audited sample"},
+      {"name": "teacher_approval_rate", "role": "quality"},
+      {"name": "student_satisfaction_score", "role": "optimized_proxy"},
+      {"name": "item_discrimination_index", "role": "counter_metric"},
+      {"name": "difficulty_distribution_drift", "role": "counter_metric"},
+      {"name": "post_release_error_reports", "role": "counter_metric"}
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "根据冻结的考纲蓝图生成题目草稿",
+      "检索并引用锚定版本的指南原文",
+      "对草稿做自动化指南一致性与题目格式校验",
+      "汇总匿名化学生满意度与答题数据",
+      "提出风格指南修改候选并做小样本 A/B 草稿",
+      "将带教老师已签字的题目写入练习题库",
+      "对已发布题目提出下架请求"
+    ],
+    "forbidden_actions": [
+      "未经带教老师签字发布任何题目",
+      "为提高满意度而修改答案、降低难度或删除临床关键考点",
+      "修改指南锚点、考纲蓝图或冻结规则",
+      "在无指南引用的情况下给出标准答案",
+      "收集或存储可识别学生身份的个人信息",
+      "将题目用于正式考核或对外公开发布"
+    ]
+  },
+  "frozen_rules": [
+    "答案正确性只以锚定的现行指南版本为准，满意度永不覆盖正确性。",
+    "每道题必须附带指南出处（指南名称、版本/年份、章节）和解析。",
+    "指南一致性验证者必须与生成者上下文独立，且只读指南锚点，不读生成者的推理。",
+    "所有题目发布前必须经带教老师人工审核签字。",
+    "风格优化只能改变题干表述、情境设计、解析写法、篇幅与呈现方式，不能改变考点、答案和难度目标。",
+    "风格指南的新版本须经 Bruce 批准后生效，并保留版本可回滚。",
+    "指南锚点超过 max_age_days 未确认时暂停新题发布。",
+    "冲突仲裁优先级：指南正确性 > 带教老师判断 > 学习效度指标 > 学生满意度。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 10,
+    "max_concurrency": 4,
+    "max_retries": 2,
+    "max_cost_units": 500
+  },
+  "failure_policy": {
+    "on_verifier_disagreement": "题目不进入教师审核队列，退回生成者最多 max_retries 次，仍不通过则丢弃并记录。",
+    "on_anchor_stale": "暂停发布，通知 Bruce 更新指南锚点。",
+    "on_counter_metric_regression": "否决当前风格候选并回滚到上一已批准风格版本。",
+    "on_post_release_error": "立即下架该题，同批次同考点题目重新复核，通知带教老师与 Bruce。",
+    "on_budget_exhausted": "停止生成，交接当前批次状态给 Bruce。"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "已发布题目被确认与现行指南不一致",
+      "指南锚点过期或发现新版指南发布",
+      "连续两个风格周期反指标恶化",
+      "带教老师退回率连续两批超过 30%",
+      "预算或重试次数耗尽",
+      "满意度与学习效度指标持续背离需要人工决定方向"
+    ],
+    "artifact": "交接报告：当前风格指南版本、待审/已发布/已下架题目清单、验证与反指标记录、未决冲突与建议"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "guideline_anchor",
+      "source": "Bruce 指定的现行急诊相关指南清单及版本（如 AHA CPR/ECC、ATLS、Surviving Sepsis Campaign、国内急诊专家共识等）",
+      "evidence_form": "指南原文章节摘录及版本号、发布日期",
+      "owner": "Bruce",
+      "freshness_rule": "每季度检查是否有新版；有新版时更新锚点并触发已发布题目回溯审计",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "exam_blueprint",
+      "source": "带教老师与 Bruce 确认的急诊实习考纲与难度分布蓝图",
+      "evidence_form": "考点清单、每考点题量与目标难度分布",
+      "owner": "Bruce",
+      "freshness_rule": "每轮实习周期开始前确认",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "student_satisfaction_ratings",
+    "student_answer_logs",
+    "teacher_review_decisions",
+    "new_guideline_releases"
+  ],
+  "nodes": [
+    {
+      "id": "guideline_anchor",
+      "kind": "anchor",
+      "responsibility": "提供冻结的现行指南版本与条文，作为答案正确性的唯一依据。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["new_guideline_releases"], "outputs": ["guideline_corpus_versioned"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "exam_blueprint",
+      "kind": "anchor",
+      "responsibility": "提供冻结的考点与难度分布，约束生成与风格优化。",
+      "owner": "Bruce",
+      "contract": {"inputs": [], "outputs": ["blueprint"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "item_generator",
+      "kind": "execution_loop",
+      "responsibility": "按考纲蓝图和当前已批准风格指南批量生成单选题草稿，每题附答案、解析和指南出处。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["blueprint", "guideline_corpus_versioned", "approved_style_guide", "revision_feedback"], "outputs": ["item_drafts"]},
+      "max_iterations": 3,
+      "evidence_sources": ["guideline_corpus_versioned", "approved_style_guide"],
+      "side_effect": "internal-reversible",
+      "writes": ["item_drafts"]
+    },
+    {
+      "id": "guideline_verifier",
+      "kind": "verification_loop",
+      "responsibility": "在独立上下文中仅依据指南锚点重新作答每道题，核对标准答案、干扰项是否确实错误、出处是否真实对应。不一致即否决。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["item_drafts", "guideline_corpus_versioned"], "outputs": ["concordance_report", "revision_feedback"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["guideline_corpus_versioned"],
+      "side_effect": "none",
+      "writes": ["concordance_report"]
+    },
+    {
+      "id": "item_quality_verifier",
+      "kind": "verification_loop",
+      "responsibility": "独立检查题目格式与教学质量：单一最佳答案、无线索暴露、干扰项合理、难度与考点符合蓝图、无歧义。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["item_drafts", "blueprint"], "outputs": ["quality_report"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["blueprint"],
+      "side_effect": "none",
+      "writes": ["quality_report"]
+    },
+    {
+      "id": "review_packager",
+      "kind": "reducer",
+      "responsibility": "只将同时通过指南验证与质量验证的题目，连同出处与验证报告打包进入教师审核队列。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["item_drafts", "concordance_report", "quality_report"], "outputs": ["review_queue"]},
+      "side_effect": "internal-reversible",
+      "writes": ["review_queue"]
+    },
+    {
+      "id": "teacher_review_gate",
+      "kind": "human_gate",
+      "responsibility": "带教老师逐题审核答案、临床合理性与教学价值，签字通过、修改意见退回或拒绝。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["review_queue", "teacher_review_decisions"], "outputs": ["approved_items", "teacher_feedback"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "publisher",
+      "kind": "execution",
+      "responsibility": "将带教老师签字的题目写入练习题库（标注指南版本与风格版本），执行下架请求。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["approved_items", "retraction_requests"], "outputs": ["published_bank"]},
+      "side_effect": "high-risk",
+      "writes": ["published_bank"]
+    },
+    {
+      "id": "feedback_aggregator",
+      "kind": "execution",
+      "responsibility": "收集匿名化学生满意度评分与答题日志，计算满意度、正确率、区分度、难度分布、错误报告。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["student_satisfaction_ratings", "student_answer_logs", "published_bank"], "outputs": ["satisfaction_metrics", "learning_metrics"]},
+      "side_effect": "internal-reversible",
+      "writes": ["metrics_store"]
+    },
+    {
+      "id": "style_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "依据满意度与学生评语提出风格指南修改候选（表述、情境、解析写法、篇幅），不得触及考点、答案、难度目标。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["satisfaction_metrics", "teacher_feedback", "approved_style_guide"], "outputs": ["style_guide_candidate"]},
+      "max_iterations": 4,
+      "optimizes": "student_satisfaction_score",
+      "evidence_sources": ["metrics_store", "teacher_feedback"],
+      "side_effect": "internal-reversible",
+      "writes": ["style_guide_candidate"]
+    },
+    {
+      "id": "counter_metric_monitor",
+      "kind": "counter_metric_loop",
+      "responsibility": "与满意度配对监测：教师退回率、区分度、难度漂移、答题正确率异常升高（题目变简单）、错误报告；任一恶化即否决风格候选。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["learning_metrics", "teacher_feedback", "style_guide_candidate"], "outputs": ["counter_metric_verdict"]},
+      "max_iterations": 4,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["student_answer_logs", "teacher_review_decisions"],
+      "side_effect": "none",
+      "writes": ["counter_metric_verdict"]
+    },
+    {
+      "id": "priority_arbiter",
+      "kind": "arbitration",
+      "responsibility": "按冻结优先级裁决满意度改进与正确性/教学效度之间的冲突，输出接受、拒绝或升级。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["style_guide_candidate", "counter_metric_verdict"], "outputs": ["arbitration_decision"]},
+      "priority_policy": "guideline_correctness > teacher_judgment > learning_metrics > student_satisfaction",
+      "side_effect": "none"
+    },
+    {
+      "id": "style_governance",
+      "kind": "governance_loop",
+      "responsibility": "Bruce 审批风格指南新版本，维护版本号与回滚；监控锚点新鲜度并在过期时暂停发布。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["arbitration_decision", "style_guide_candidate", "guideline_corpus_versioned"], "outputs": ["approved_style_guide", "publish_hold_flag"]},
+      "max_iterations": 1,
+      "side_effect": "internal-reversible",
+      "writes": ["approved_style_guide"]
+    },
+    {
+      "id": "release_audit",
+      "kind": "audit_loop",
+      "responsibility": "定期抽样及指南更新时全量回溯审计已发布题目，与当前指南锚点比对，发现不一致提出下架请求并升级。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["published_bank", "guideline_corpus_versioned", "learning_metrics"], "outputs": ["retraction_requests", "audit_report"]},
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["guideline_corpus_versioned"],
+      "side_effect": "none",
+      "writes": ["audit_report"]
+    },
+    {
+      "id": "stop_handoff_node",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时冻结发布与优化，生成交接报告给 Bruce。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["audit_report", "arbitration_decision", "counter_metric_verdict"], "outputs": ["handoff_report"]},
+      "side_effect": "none"
+    }
+  ],
+  "edges": [
+    {"from": "guideline_anchor", "to": "item_generator", "relation": "anchors", "artifact": "guideline_corpus_versioned"},
+    {"from": "guideline_anchor", "to": "guideline_verifier", "relation": "anchors", "artifact": "guideline_corpus_versioned"},
+    {"from": "guideline_anchor", "to": "release_audit", "relation": "anchors", "artifact": "guideline_corpus_versioned"},
+    {"from": "guideline_anchor", "to": "style_governance", "relation": "anchors", "artifact": "guideline_corpus_versioned"},
+    {"from": "exam_blueprint", "to": "item_generator", "relation": "constrains", "artifact": "blueprint"},
+    {"from": "exam_blueprint", "to": "item_quality_verifier", "relation": "anchors", "artifact": "blueprint"},
+    {"from": "item_generator", "to": "guideline_verifier", "relation": "feeds", "artifact": "item_drafts"},
+    {"from": "item_generator", "to": "item_quality_verifier", "relation": "feeds", "artifact": "item_drafts"},
+    {"from": "item_generator", "to": "review_packager", "relation": "feeds", "artifact": "item_drafts"},
+    {"from": "guideline_verifier", "to": "review_packager", "relation": "verifies", "artifact": "concordance_report"},
+    {"from": "guideline_verifier", "to": "review_packager", "relation": "vetoes", "artifact": "concordance_report"},
+    {"from": "item_quality_verifier", "to": "review_packager", "relation": "verifies", "artifact": "quality_report"},
+    {"from": "guideline_verifier", "to": "item_generator", "relation": "revises", "artifact": "revision_feedback"},
+    {"from": "review_packager", "to": "teacher_review_gate", "relation": "feeds", "artifact": "review_queue"},
+    {"from": "teacher_review_gate", "to": "publisher", "relation": "feeds", "artifact": "approved_items"},
+    {"from": "teacher_review_gate", "to": "style_optimizer", "relation": "observes", "artifact": "teacher_feedback"},
+    {"from": "teacher_review_gate", "to": "counter_metric_monitor", "relation": "observes", "artifact": "teacher_feedback"},
+    {"from": "publisher", "to": "feedback_aggregator", "relation": "feeds", "artifact": "published_bank"},
+    {"from": "publisher", "to": "release_audit", "relation": "feeds", "artifact": "published_bank"},
+    {"from": "feedback_aggregator", "to": "style_optimizer", "relation": "observes", "artifact": "satisfaction_metrics"},
+    {"from": "feedback_aggregator", "to": "counter_metric_monitor", "relation": "observes", "artifact": "learning_metrics"},
+    {"from": "feedback_aggregator", "to": "release_audit", "relation": "observes", "artifact": "learning_metrics"},
+    {"from": "style_optimizer", "to": "counter_metric_monitor", "relation": "feeds", "artifact": "style_guide_candidate"},
+    {"from": "style_optimizer", "to": "priority_arbiter", "relation": "feeds", "artifact": "style_guide_candidate"},
+    {"from": "counter_metric_monitor", "to": "priority_arbiter", "relation": "vetoes", "artifact": "counter_metric_verdict"},
+    {"from": "priority_arbiter", "to": "style_governance", "relation": "arbitrates", "artifact": "arbitration_decision"},
+    {"from": "style_governance", "to": "item_generator", "relation": "revises", "artifact": "approved_style_guide"},
+    {"from": "style_governance", "to": "style_optimizer", "relation": "constrains", "artifact": "approved_style_guide"},
+    {"from": "style_governance", "to": "publisher", "relation": "constrains", "artifact": "publish_hold_flag"},
+    {"from": "release_audit", "to": "publisher", "relation": "vetoes", "artifact": "retraction_requests"},
+    {"from": "release_audit", "to": "stop_handoff_node", "relation": "escalates", "artifact": "audit_report"},
+    {"from": "priority_arbiter", "to": "stop_handoff_node", "relation": "escalates", "artifact": "arbitration_decision"},
+    {"from": "counter_metric_monitor", "to": "stop_handoff_node", "relation": "escalates", "artifact": "counter_metric_verdict"},
+    {"from": "stop_handoff_node", "to": "style_governance", "relation": "hands_off", "artifact": "handoff_report"}
+  ]
+}

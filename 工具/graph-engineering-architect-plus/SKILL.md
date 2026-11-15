@@ -3,7 +3,7 @@ name: graph-engineering-architect-plus
 description: Design, assess, verify, diagnose, and repair grounded graphs of interacting improvement loops. Use for Agent frameworks, research pipelines (manuscripts, pharmacovigilance, model competitions), quality-control systems, long-running automation, self-improving workflows, or multi-agent architectures where several objectives, metrics, cadences, verifiers, approval gates, or feedback loops interact. Also use when a loop is gaming its metric, optimizing the wrong target, conflicting with another loop, trusting decayed measurements, letting the improver rewrite its own judge, or becoming a circular network of mutual confirmation. Do not use for a single bounded action or a simple workflow with one reliable feedback signal.
 ---
 
-# Graph Engineering Architect Plus v1.1
+# Graph Engineering Architect Plus v1.2
 
 一句话：多回路系统的问题不在于 Agent 不够多，而在于谁能约束谁、谁拿着独立于优化者的证据。本 Skill 把这些关系写成可校验的图，并让脚本自动找出“系统会骗自己”的结构漏洞。
 
@@ -48,7 +48,9 @@ description: Design, assess, verify, diagnose, and repair grounded graphs of int
 4. **扎根**：至少一个优化回路无法生成、改写或选择性隐藏的现实锚点（执行过的测试、留出数据、真实病例计数、外部登记结果、签字审批、独立来源数据）。记录 source、evidence、owner、freshness_rule、frozen，v1.1 建议加 `max_age_days` + `last_confirmed`。独立性要同时覆盖**评估者**和**数据来源**：另一个 Agent 读同一张坏表不算独立。
 5. **分速与授权**：快回路在固定边界内动作；慢回路（审计、治理）审视漂移、取舍和目标有效性。快回路不得改写慢回路的目标、验证者、安全边界或审批规则。冲突发生前就定好仲裁 owner 与 priority_policy。
 6. **故障探针**：刷分、优化错目标、局部成功全局受损、测量衰减、共享来源循环互证、元回路削弱测试、快回路搅动慢变量、无独立证据宣告完成。
-7. **持久化契约**：`init` 生成 `.graph/<slug>/`（graph.json、graph-spec.md、validation-report.md、handoff.md）。脚手架里的 TODO 会让校验失败，填完才算设计完成。
+7. **领域效度**（v1.2）：在 `root_goal.domain` 声明领域（ml_model / evidence_synthesis / clinical_protocol / code_agent / multi_agent_shared / ops_automation），并在 `domain_audits` 把每个必需关注点分给一个有否决/约束/升级权的检查节点。结构正确不等于方法学正确，见 [domain-checklists-v1.2.md](references/domain-checklists-v1.2.md)。
+8. **过期锚点**（v1.2）：锚点超过 `max_age_days` 时，不要假装新鲜，也不要只写进说明。设 `revalidation_gate` 指向人工门，并让该门对此锚点喂给的每个检查者都有 vetoes/constrains 边；diagnose 状态为 `pending_revalidation`。
+9. **持久化契约**：`init` 生成 `.graph/<slug>/`（graph.json、graph-spec.md、validation-report.md、handoff.md）。脚手架里的 TODO 会让校验失败，填完才算设计完成。
 
 ## 自动硬约束（validate）
 
@@ -64,6 +66,11 @@ v1.1 新增：
 - **E-THEATER**：验证者只收到执行者递来的东西，没有独立来源。
 - **W-PRIORITY**：多个检查者却没有 priority_policy。
 - **E-PLACEHOLDER**：残留 TODO / 待实例化 / 待用户指定。
+
+v1.2 新增：
+- **E-STALE**：锚点过期且没有人工门挡住它的使用。
+- **E-DOMAIN**：声明的领域缺少必需关注点，或关注点落在执行者/没有牙齿的检查者上。
+- **W-NODOMAIN**：图模式未声明领域（提醒，不阻断）。
 
 ## 诊断与修复顺序（diagnose）
 
@@ -89,15 +96,15 @@ v1.1 新增：
 ## 命令
 
 ```bash
-T=scripts/geaplus-v1.1.py
+T=scripts/geaplus-v1.2.py
 python3 $T init "<根结果>" --root <项目根> --slug <名字>
-python3 $T validate <项目根>/.graph/<名字>      # 也接受 json 文件；version:1 旧格式自动适配
+python3 $T validate <项目根>/.graph/<名字> [--today 2026-11-15]   # 也接受 json 文件；version:1 旧格式自动适配
 python3 $T diagnose graph.json --today 2026-11-15 [--run run-log.json]
 python3 $T mermaid  graph.json > graph.mmd
 python3 $T simulate graph.json [--fail-node ID]
 python3 $T classify brief.json
 ```
 
-参考：[design-principles-v1.0.md](references/design-principles-v1.0.md)（每条检查背后的理由、锚点五问、反指标配对、快慢分层、故障手册、修复顺序）· [graph-spec-v1.1.md](references/graph-spec-v1.1.md)（字段说明与旧格式映射）。
+参考：[design-principles-v1.0.md](references/design-principles-v1.0.md)（每条检查背后的理由、锚点五问、反指标配对、快慢分层、故障手册、修复顺序）· [graph-spec-v1.2.md](references/graph-spec-v1.2.md)（字段说明与旧格式映射）· [domain-checklists-v1.2.md](references/domain-checklists-v1.2.md)（各领域必需的效度检查）。
 
 致谢：设计思路受 Anita Yin 的 graph-engineering-architect 启发。

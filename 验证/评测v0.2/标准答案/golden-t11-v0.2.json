@@ -1,0 +1,282 @@
+{
+ "schema_version": "1.1",
+ "title": "meta 分析数据提取与独立复核",
+ "mode": "graph",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "写进论文的合并效应量可回溯到原文且经独立提取",
+  "human_owner": "Bruce",
+  "observable_success": "两名提取者分别从原文 PDF 独立提取，不一致项经第三方裁决，偏倚与异质性评估完成，Bruce 确认后写入论文",
+  "metrics": [
+   "extraction_agreement"
+  ]
+ },
+ "external_inputs": [
+  "included-pdfs",
+  "rob-forms",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "提取数据",
+   "合并分析"
+  ],
+  "forbidden_actions": [
+   "只用 A 的提取表做复核",
+   "未经 Bruce 确认写入论文"
+  ]
+ },
+ "frozen_rules": [
+  "复核者必须独立回到原文 PDF 提取，不读 A 的提取表"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "不一致无法裁决",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "papers",
+   "source": "40 篇纳入文献的原文全文 PDF",
+   "evidence_form": "PDF 哈希清单",
+   "owner": "Bruce",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "papers",
+   "kind": "anchor",
+   "responsibility": "冻结的原文全文",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "included-pdfs"
+    ],
+    "outputs": [
+     "pdf-set"
+    ]
+   }
+  },
+  {
+   "id": "extract-a",
+   "kind": "execution_loop",
+   "responsibility": "Agent A 从原文提取效应量与样本量",
+   "owner": "Agent A",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "pdf-set"
+    ],
+    "outputs": [
+     "table-a"
+    ]
+   },
+   "optimizes": "extraction_agreement",
+   "max_iterations": 2,
+   "evidence_sources": [
+    "included-pdfs"
+   ],
+   "writes": [
+    "extraction/a/"
+   ]
+  },
+  {
+   "id": "extract-b",
+   "kind": "verification_loop",
+   "responsibility": "Agent B 背对背独立从原文 PDF 重新提取，不读 A 的提取表",
+   "owner": "Agent B",
+   "contract": {
+    "inputs": [
+     "pdf-set"
+    ],
+    "outputs": [
+     "table-b"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "included-pdfs"
+   ]
+  },
+  {
+   "id": "adjudicate",
+   "kind": "arbitration",
+   "responsibility": "两表不一致项回到原文由第三人裁决",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "table-a",
+     "table-b"
+    ],
+    "outputs": [
+     "final-table"
+    ]
+   },
+   "priority_policy": "原文数据 > 提取者意见"
+  },
+  {
+   "id": "bias-audit",
+   "kind": "audit_loop",
+   "responsibility": "偏倚风险、异质性与发表偏倚评估",
+   "owner": "方法学审查",
+   "contract": {
+    "inputs": [
+     "final-table"
+    ],
+    "outputs": [
+     "bias-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "rob-forms"
+   ]
+  },
+  {
+   "id": "paper-gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 确认后写入论文",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "final-table",
+     "bias-report"
+    ],
+    "outputs": [
+     "write-decision"
+    ]
+   }
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "extract-a",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "papers",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "papers",
+   "to": "extract-a",
+   "relation": "feeds",
+   "artifact": "pdf-set"
+  },
+  {
+   "from": "papers",
+   "to": "extract-b",
+   "relation": "anchors",
+   "artifact": "pdf-set"
+  },
+  {
+   "from": "extract-a",
+   "to": "adjudicate",
+   "relation": "feeds",
+   "artifact": "table-a"
+  },
+  {
+   "from": "extract-b",
+   "to": "adjudicate",
+   "relation": "escalates",
+   "artifact": "table-b"
+  },
+  {
+   "from": "bias-audit",
+   "to": "extract-a",
+   "relation": "observes",
+   "artifact": "bias-report"
+  },
+  {
+   "from": "adjudicate",
+   "to": "bias-audit",
+   "relation": "feeds",
+   "artifact": "final-table"
+  },
+  {
+   "from": "bias-audit",
+   "to": "paper-gate",
+   "relation": "escalates",
+   "artifact": "bias-report"
+  },
+  {
+   "from": "adjudicate",
+   "to": "paper-gate",
+   "relation": "constrains",
+   "artifact": "final-table"
+  },
+  {
+   "from": "extract-b",
+   "to": "paper-gate",
+   "relation": "vetoes",
+   "artifact": "table-b"
+  },
+  {
+   "from": "paper-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "write-decision"
+  }
+ ]
+}

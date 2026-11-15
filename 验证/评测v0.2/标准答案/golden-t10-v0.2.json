@@ -1,0 +1,328 @@
+{
+ "schema_version": "1.1",
+ "title": "急诊出院流程双目标改进",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "在不伤害病人的前提下同时改善急诊滞留时间和 72 小时返诊率",
+  "human_owner": "Bruce",
+  "observable_success": "滞留时间下降且 72 小时返诊率与不良事件不升高，出院标准变更经急诊科主任批准",
+  "metrics": [
+   "ed_length_of_stay",
+   "revisit_72h"
+  ]
+ },
+ "external_inputs": [
+  "his-records",
+  "flow-data",
+  "adverse-event-log",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "各自提出流程变更建议",
+   "离线回顾模拟"
+  ],
+  "forbidden_actions": [
+   "任一 Agent 单独修改出院标准或流程清单",
+   "未经批准实施变更"
+  ]
+ },
+ "frozen_rules": [
+  "出院标准是共享资源，只能经仲裁和人工批准修改"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "不良事件上升",
+   "两目标持续冲突",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "outcomes",
+   "source": "HIS 中的滞留时间、72 小时返诊与不良事件真实记录",
+   "evidence_form": "月度结局表",
+   "owner": "医务处",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "outcomes",
+   "kind": "anchor",
+   "responsibility": "冻结的真实结局记录",
+   "owner": "医务处",
+   "contract": {
+    "inputs": [
+     "his-records"
+    ],
+    "outputs": [
+     "outcome-set"
+    ]
+   }
+  },
+  {
+   "id": "los-agent",
+   "kind": "execution_loop",
+   "responsibility": "提出缩短滞留时间的建议",
+   "owner": "流程 Agent A",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "flow-data"
+    ],
+    "outputs": [
+     "los-proposal"
+    ]
+   },
+   "optimizes": "ed_length_of_stay",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "flow-data"
+   ],
+   "writes": [
+    "proposals/los/"
+   ]
+  },
+  {
+   "id": "revisit-agent",
+   "kind": "execution_loop",
+   "responsibility": "提出降低返诊率的建议",
+   "owner": "流程 Agent B",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "flow-data"
+    ],
+    "outputs": [
+     "revisit-proposal"
+    ]
+   },
+   "optimizes": "revisit_72h",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "flow-data"
+   ],
+   "writes": [
+    "proposals/revisit/"
+   ]
+  },
+  {
+   "id": "outcome-check",
+   "kind": "verification_loop",
+   "responsibility": "用真实结局独立评估两类建议",
+   "owner": "质控统计员",
+   "contract": {
+    "inputs": [
+     "los-proposal",
+     "revisit-proposal",
+     "outcome-set"
+    ],
+    "outputs": [
+     "outcome-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "outcome-set"
+   ]
+  },
+  {
+   "id": "safety-watch",
+   "kind": "counter_metric_loop",
+   "responsibility": "监测出院后不良事件、死亡与非计划 ICU 入住",
+   "owner": "护理与医务质控",
+   "contract": {
+    "inputs": [
+     "los-proposal",
+     "revisit-proposal"
+    ],
+    "outputs": [
+     "safety-report"
+    ]
+   },
+   "max_iterations": 1,
+   "evidence_sources": [
+    "adverse-event-log"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "两个 Agent 建议冲突时裁决",
+   "owner": "急诊科主任",
+   "contract": {
+    "inputs": [
+     "outcome-report",
+     "safety-report"
+    ],
+    "outputs": [
+     "merged-plan"
+    ]
+   },
+   "priority_policy": "病人安全 > 72 小时返诊 > 滞留时间"
+  },
+  {
+   "id": "change-gate",
+   "kind": "human_gate",
+   "responsibility": "急诊科主任批准出院标准变更",
+   "owner": "急诊科主任",
+   "contract": {
+    "inputs": [
+     "merged-plan"
+    ],
+    "outputs": [
+     "change-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "los-agent",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "revisit-agent",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "outcomes",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "outcomes",
+   "to": "outcome-check",
+   "relation": "anchors",
+   "artifact": "outcome-set"
+  },
+  {
+   "from": "los-agent",
+   "to": "outcome-check",
+   "relation": "feeds",
+   "artifact": "los-proposal"
+  },
+  {
+   "from": "revisit-agent",
+   "to": "outcome-check",
+   "relation": "feeds",
+   "artifact": "revisit-proposal"
+  },
+  {
+   "from": "los-agent",
+   "to": "safety-watch",
+   "relation": "feeds",
+   "artifact": "los-proposal"
+  },
+  {
+   "from": "revisit-agent",
+   "to": "safety-watch",
+   "relation": "feeds",
+   "artifact": "revisit-proposal"
+  },
+  {
+   "from": "safety-watch",
+   "to": "los-agent",
+   "relation": "observes",
+   "artifact": "safety-report"
+  },
+  {
+   "from": "safety-watch",
+   "to": "revisit-agent",
+   "relation": "observes",
+   "artifact": "safety-report"
+  },
+  {
+   "from": "outcome-check",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "outcome-report"
+  },
+  {
+   "from": "safety-watch",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "safety-report"
+  },
+  {
+   "from": "outcome-check",
+   "to": "change-gate",
+   "relation": "vetoes",
+   "artifact": "outcome-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "change-gate",
+   "relation": "constrains",
+   "artifact": "merged-plan"
+  },
+  {
+   "from": "change-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "change-decision"
+  }
+ ]
+}

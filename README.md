@@ -19,7 +19,7 @@
 
 <p align="center">
   <a href="https://github.com/TUANZIDING/graph-engineering-architect-plus/actions"><img src="https://github.com/TUANZIDING/graph-engineering-architect-plus/actions/workflows/%E9%A1%B9%E7%9B%AE%E6%A3%80%E6%9F%A5v1.0.yml/badge.svg" alt="项目检查"></a>
-  <img src="https://img.shields.io/badge/version-1.1.0-0e7490" alt="版本 1.1.0">
+  <img src="https://img.shields.io/badge/version-1.2.0-0e7490" alt="版本 1.2.0">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0b6f6b" alt="MIT"></a>
   <img src="https://img.shields.io/badge/python-3.10%2B%20%C2%B7%20零依赖-4b5563" alt="Python 3.10+ 零依赖">
   <img src="https://img.shields.io/badge/Codex%20%2F%20Claude%20Code-Skill-6a3fd1" alt="Codex / Claude Code Skill">
@@ -102,7 +102,7 @@
 | 分层与人 | 快慢节奏 · 高风险副作用前置人工门 · 目标变更须人工批准 |
 | 拓扑 | 有界环与出口 · 每个节点可收束 · 并行单写者 · 汇合完整 · 无 TODO 残留 |
 
-完整字段见 [`文档/规格说明v1.1.md`](文档/规格说明v1.1.md)，每条规则背后的理由见 [`文档/设计手册v1.0.md`](文档/设计手册v1.0.md)。
+完整字段见 [`文档/规格说明v1.2.md`](文档/规格说明v1.2.md)，领域必需的效度检查见 [`文档/领域效度清单v1.2.md`](文档/领域效度清单v1.2.md)，每条规则背后的理由见 [`文档/设计手册v1.0.md`](文档/设计手册v1.0.md)。
 
 <a id="quick-start"></a>
 
@@ -117,7 +117,7 @@ cp -R 工具/graph-engineering-architect-plus ~/.codex/skills/      # Codex
 cp -R 工具/graph-engineering-architect-plus ~/.claude/skills/     # Claude Code
 
 # 命令行（Python 3.10+，零依赖）
-T=工具/graph-engineering-architect-plus/scripts/geaplus-v1.1.py
+T=工具/graph-engineering-architect-plus/scripts/geaplus-v1.2.py
 python3 $T init "可复现的结论" --root . --slug demo     # 生成 .graph/demo/ 四件套
 python3 $T validate .graph/demo                          # TODO 没填完会失败
 python3 $T diagnose 示例/broken-circular-graph-v1.0.json --today 2026-11-15
@@ -136,12 +136,12 @@ python3 验证/项目检查v1.0.py
 
 | 路径 | 内容 |
 | --- | --- |
-| [`工具/graph-engineering-architect-plus/`](工具/graph-engineering-architect-plus/) | 可安装的 Skill：`SKILL.md`、`scripts/geaplus-v1.1.py`（v1.0 保留）、`references/` |
+| [`工具/graph-engineering-architect-plus/`](工具/graph-engineering-architect-plus/) | 可安装的 Skill：`SKILL.md`、`scripts/geaplus-v1.2.py`（v1.0、v1.1 保留）、`references/` |
 | [`工具/`](工具/) | `绘制拓扑图v1.0.py` · `渲染图片v1.0.py` · `制作配图v1.0.py` · `构建网页数据v1.0.py` |
 | [`示例/`](示例/) | 药物警戒论文正例与反例、急诊病历质控修复前后，附 Mermaid 与 [示例说明](示例/示例说明v1.0.md) |
 | [`文档/`](文档/) | 设计手册、规格说明、英文说明、图片说明、封面与截图 |
 | [`图片/`](图片/) | 拓扑图（SVG + webp + 缩略图）与示意图 |
-| [`验证/`](验证/) | 回归测试 v1.0（21）与 v1.1（32）、项目检查、[运行记录](验证/运行记录v1.1.md) |
+| [`验证/`](验证/) | 回归测试 v1.0（21）、v1.1（35）与 v1.2（44）、项目检查、[运行记录](验证/运行记录v1.1.md) |
 | `index.html` · `assets/` | GitHub Pages 项目主页 |
 
 <a id="license"></a>

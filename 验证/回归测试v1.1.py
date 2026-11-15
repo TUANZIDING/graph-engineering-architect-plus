@@ -210,5 +210,26 @@ class V11(unittest.TestCase):
             self.assertIn("E-PLACEHOLDER", codes(spec))
 
 
+
+class MalformedInput(unittest.TestCase):
+    """评测 v0.1 发现：root_goal.metrics 写成对象列表时 diagnose 崩溃（TypeError）。"""
+
+    def bad_metrics(self):
+        s = copy.deepcopy(GOOD)
+        s["root_goal"]["metrics"] = [{"name": "sensitivity", "target": ">=0.9"}]
+        return s
+
+    def test_validate_flags_object_metrics(self):
+        self.assertIn("E-METRICS", codes(self.bad_metrics()))
+
+    def test_diagnose_does_not_crash(self):
+        d = gea.diagnose(self.bad_metrics(), TODAY, None)
+        self.assertIn("status", d)
+
+    def test_string_metrics_still_ok(self):
+        s = copy.deepcopy(GOOD)
+        s["root_goal"]["metrics"] = ["sensitivity"]
+        self.assertNotIn("E-METRICS", codes(s))
+
 if __name__ == "__main__":
     unittest.main()

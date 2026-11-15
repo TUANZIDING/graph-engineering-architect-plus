@@ -1,0 +1,4 @@
+{
+ "mode": "graph",
+ "rationale": "多个 Agent 分别检索、翻译、审核、仲裁、推送"
+}

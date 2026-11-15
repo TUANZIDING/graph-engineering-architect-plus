@@ -1,0 +1,309 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊出院流程双 Agent 改进控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "两个 Agent 优化相互拮抗的指标（滞留时间↓ 会推高 72h 返诊率），且都想写同一份共享资源（出院标准、流程清单），属于临床高风险变更。需要图结构：单写者仲裁、独立反指标验证、真实结局锚点、医疗质量委员会人类闸门；每个 Agent 内部是有上限的提案-评估循环，故为 graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在不增加患者安全风险的前提下，改进急诊出院流程，使急诊滞留时间缩短且 72 小时返诊率不上升（理想为下降）。",
+    "human_owner": "Bruce",
+    "observable_success": "经医疗质量委员会批准的出院标准/清单版本上线后，以至少 8 周、按病情严重度与季节调整的对照数据显示：急诊中位滞留时间下降，72h 返诊率及 72h 返诊后收住院率不劣于基线（非劣界值预先冻结），且 30 天死亡、ICU 转入、离院不归/未就诊离开等安全指标无显著恶化。",
+    "metrics": [
+      "ed_length_of_stay_median",
+      "return_visit_72h_rate",
+      "return_72h_with_admission_rate",
+      "mortality_30d",
+      "icu_transfer_after_return",
+      "left_without_being_seen_rate",
+      "boarding_time",
+      "patient_reported_discharge_understanding"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取去标识化的急诊就诊、出院、返诊与结局数据",
+      "生成出院标准和流程清单的修改提案（含证据与预期影响）",
+      "运行回顾性模拟与反事实分析",
+      "在沙箱/影子模式中评估提案",
+      "向仲裁节点与人类闸门提交提案包"
+    ],
+    "forbidden_actions": [
+      "直接修改生产环境中的出院标准或流程清单",
+      "对任何具体患者做出出院决定或覆盖医生判断",
+      "修改或重新定义指标口径、基线、非劣界值",
+      "访问可识别身份的患者信息超出最小必要范围",
+      "两个 Agent 互相直接改写对方的提案或共享规则文件",
+      "通过改变返诊统计口径（如排除转院、改编码）来降低返诊率"
+    ]
+  },
+  "frozen_rules": [
+    "出院标准与流程清单的生产版本只有一个写者：变更登记节点，且仅在医疗质量委员会（Bruce 为负责人）批准后写入。",
+    "患者安全优先级高于任一效率指标；任何安全反指标触发阈值即暂停该变更。",
+    "指标口径、数据窗口、风险调整方法、非劣界值在实验开始前冻结，Agent 不得修改。",
+    "72h 返诊必须包含跨院区/区域平台可获取的返诊与死亡记录，不得只统计本院。",
+    "所有提案必须可回滚，并附带回滚触发条件。",
+    "验证节点使用与提案 Agent 独立的数据切片与上下文，不得复用 Agent 的自评结果。",
+    "医生对个体患者的临床判断永远可覆盖出院标准。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": "任一节点超出迭代上限、验证失败两次、锚点数据过期、或安全反指标越界时：冻结当前提案，不进入上线，生成停止交接包交 Bruce；已上线变更若触发安全阈值则按预设回滚到上一批准版本。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "安全反指标（30天死亡、返诊收住院率、ICU转入）超过预设阈值",
+      "两个 Agent 提案冲突且仲裁无法在预算内给出帕累托可行方案",
+      "锚点数据超过 max_age_days 未更新或口径变更",
+      "验证节点连续两轮不通过",
+      "预算或迭代上限耗尽",
+      "发现指标博弈迹象（口径漂移、编码变化、返诊转移到外院）"
+    ],
+    "artifact": "停止交接包：当前提案版本、冲突点、各指标前后对比与置信区间、失败原因、回滚状态、待人类决策问题清单"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "his_emr_ed_visits",
+    "regional_return_and_death_registry",
+    "current_discharge_criteria_v_prod",
+    "current_discharge_checklist_v_prod",
+    "frozen_metric_definitions"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_outcomes",
+      "source": "医院 HIS/EMR 急诊就诊与出院记录 + 区域卫生平台跨院返诊与死亡登记",
+      "evidence_form": "按就诊级别的去标识化结局表：到达/离开时间戳、分诊级别、诊断、出院去向、72h 内任一院区返诊及其是否收住院、30 天死亡",
+      "owner": "Bruce",
+      "freshness_rule": "每周增量更新；72h 返诊需等待 ≥7 天、30 天死亡需等待 ≥35 天数据成熟后才用于评估",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_metric_defs",
+      "source": "医疗质量委员会批准的指标口径与非劣界值文档",
+      "evidence_form": "版本化口径文档：滞留时间定义、返诊定义（含排除规则）、风险调整模型、非劣界值、安全阈值",
+      "owner": "Bruce",
+      "freshness_rule": "实验期内不可变；变更须委员会重新批准并重置基线",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供真实患者结局与流程时间戳，作为所有评估的唯一事实来源",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["his_emr_ed_visits", "regional_return_and_death_registry"],
+        "outputs": ["outcome_dataset"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_metric_defs",
+      "kind": "anchor",
+      "responsibility": "冻结指标口径、风险调整方法、非劣界值和安全阈值",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["frozen_metric_definitions"],
+        "outputs": ["metric_spec"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "agent_los",
+      "kind": "execution_loop",
+      "responsibility": "分析滞留瓶颈（等待检查、会诊、文书、床位），提出缩短急诊滞留时间的出院标准/清单修改提案，并在历史数据上模拟",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["outcome_dataset", "metric_spec", "current_discharge_criteria_v_prod", "current_discharge_checklist_v_prod", "arbitration_feedback"],
+        "outputs": ["los_proposal"]
+      },
+      "max_iterations": 5,
+      "optimizes": "ed_length_of_stay_median",
+      "evidence_sources": ["anchor_outcomes"],
+      "side_effect": "none",
+      "writes": ["los_proposal_draft"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "agent_return",
+      "kind": "execution_loop",
+      "responsibility": "分析 72h 返诊病例的可预防因素（出院宣教、随访、高危识别），提出降低返诊率的出院标准/清单修改提案，并在历史数据上模拟",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["outcome_dataset", "metric_spec", "current_discharge_criteria_v_prod", "current_discharge_checklist_v_prod", "arbitration_feedback"],
+        "outputs": ["return_proposal"]
+      },
+      "max_iterations": 5,
+      "optimizes": "return_visit_72h_rate",
+      "evidence_sources": ["anchor_outcomes"],
+      "side_effect": "none",
+      "writes": ["return_proposal_draft"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "counter_metric_guard",
+      "kind": "counter_metric_loop",
+      "responsibility": "对每个提案同时评估对方指标与安全反指标（返诊收住院率、30天死亡、ICU转入、离院未就诊、滞留转移为住院等待），检测指标博弈与口径漂移",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["los_proposal", "return_proposal", "outcome_dataset", "metric_spec"],
+        "outputs": ["counter_metric_report"]
+      },
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["anchor_outcomes", "anchor_metric_defs"],
+      "side_effect": "none",
+      "writes": ["counter_metric_report"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "合并两个提案，识别冲突条款，只保留在两项主指标上均不劣、安全指标不恶化的帕累托组合；冲突不可解时上报人类，并给两个 Agent 返回统一反馈",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["los_proposal", "return_proposal", "counter_metric_report", "metric_spec"],
+        "outputs": ["merged_proposal", "arbitration_feedback", "conflict_log"]
+      },
+      "priority_policy": "患者安全 > 72h 返诊非劣 > 滞留时间改善 > 实施成本；冲突且无帕累托解时不取舍，升级给 Bruce",
+      "side_effect": "none",
+      "writes": ["merged_proposal"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "independent_verifier",
+      "kind": "verification_loop",
+      "responsibility": "在留出的时间段数据上独立复算合并提案的预期效果（含风险调整与置信区间），检查临床指南一致性与可回滚性",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["merged_proposal", "outcome_dataset", "metric_spec"],
+        "outputs": ["verification_report"]
+      },
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["anchor_outcomes", "anchor_metric_defs"],
+      "side_effect": "none",
+      "writes": ["verification_report"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "quality_committee_gate",
+      "kind": "human_gate",
+      "responsibility": "医疗质量委员会（负责人 Bruce，含急诊主任、护理、质控）审核合并提案、验证报告与反指标报告，决定批准试点、退回或终止",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["merged_proposal", "verification_report", "counter_metric_report", "conflict_log"],
+        "outputs": ["approval_decision"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "change_registry",
+      "kind": "execution",
+      "responsibility": "唯一写者：将已批准版本写入出院标准/清单的版本库，分阶段试点上线（如单班组或单时段），记录版本号与回滚点",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["approval_decision", "merged_proposal"],
+        "outputs": ["deployed_version", "rollback_point"]
+      },
+      "side_effect": "high-risk",
+      "writes": ["discharge_criteria_prod", "discharge_checklist_prod"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "post_deploy_audit",
+      "kind": "audit_loop",
+      "responsibility": "上线后按成熟数据持续监测主指标与安全反指标，触发阈值即建议回滚并上报，生成周期性效果报告",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["deployed_version", "outcome_dataset", "metric_spec"],
+        "outputs": ["audit_report", "rollback_recommendation"]
+      },
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["anchor_outcomes", "anchor_metric_defs"],
+      "side_effect": "none",
+      "writes": ["audit_report"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "监督预算、迭代上限、锚点新鲜度、权限越界与指标博弈迹象，必要时冻结全系统",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["conflict_log", "counter_metric_report", "audit_report", "verification_report"],
+        "outputs": ["governance_directive"]
+      },
+      "max_iterations": 20,
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "stop_handoff_node",
+      "kind": "stop_handoff",
+      "responsibility": "停止条件触发时打包当前状态、冲突与回滚情况交给 Bruce",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["governance_directive", "rollback_recommendation", "audit_report", "approval_decision"],
+        "outputs": ["handoff_package"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "anchor_outcomes", "to": "agent_los", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_outcomes", "to": "agent_return", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_outcomes", "to": "counter_metric_guard", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_outcomes", "to": "independent_verifier", "relation": "anchors", "artifact": "outcome_dataset (held-out period)"},
+    {"from": "anchor_outcomes", "to": "post_deploy_audit", "relation": "anchors", "artifact": "outcome_dataset (post-deploy, matured)"},
+    {"from": "anchor_metric_defs", "to": "agent_los", "relation": "constrains", "artifact": "metric_spec"},
+    {"from": "anchor_metric_defs", "to": "agent_return", "relation": "constrains", "artifact": "metric_spec"},
+    {"from": "anchor_metric_defs", "to": "counter_metric_guard", "relation": "anchors", "artifact": "metric_spec"},
+    {"from": "anchor_metric_defs", "to": "arbiter", "relation": "constrains", "artifact": "metric_spec"},
+    {"from": "anchor_metric_defs", "to": "independent_verifier", "relation": "anchors", "artifact": "metric_spec"},
+    {"from": "anchor_metric_defs", "to": "post_deploy_audit", "relation": "anchors", "artifact": "metric_spec"},
+    {"from": "agent_los", "to": "counter_metric_guard", "relation": "feeds", "artifact": "los_proposal"},
+    {"from": "agent_return", "to": "counter_metric_guard", "relation": "feeds", "artifact": "return_proposal"},
+    {"from": "agent_los", "to": "arbiter", "relation": "feeds", "artifact": "los_proposal"},
+    {"from": "agent_return", "to": "arbiter", "relation": "feeds", "artifact": "return_proposal"},
+    {"from": "counter_metric_guard", "to": "arbiter", "relation": "vetoes", "artifact": "counter_metric_report"},
+    {"from": "arbiter", "to": "agent_los", "relation": "revises", "artifact": "arbitration_feedback"},
+    {"from": "arbiter", "to": "agent_return", "relation": "revises", "artifact": "arbitration_feedback"},
+    {"from": "arbiter", "to": "independent_verifier", "relation": "feeds", "artifact": "merged_proposal"},
+    {"from": "independent_verifier", "to": "quality_committee_gate", "relation": "verifies", "artifact": "verification_report"},
+    {"from": "arbiter", "to": "quality_committee_gate", "relation": "feeds", "artifact": "merged_proposal + conflict_log"},
+    {"from": "counter_metric_guard", "to": "quality_committee_gate", "relation": "feeds", "artifact": "counter_metric_report"},
+    {"from": "quality_committee_gate", "to": "change_registry", "relation": "feeds", "artifact": "approval_decision"},
+    {"from": "change_registry", "to": "post_deploy_audit", "relation": "feeds", "artifact": "deployed_version"},
+    {"from": "post_deploy_audit", "to": "agent_los", "relation": "observes", "artifact": "audit_report"},
+    {"from": "post_deploy_audit", "to": "agent_return", "relation": "observes", "artifact": "audit_report"},
+    {"from": "post_deploy_audit", "to": "governance", "relation": "escalates", "artifact": "audit_report + rollback_recommendation"},
+    {"from": "arbiter", "to": "governance", "relation": "escalates", "artifact": "conflict_log"},
+    {"from": "counter_metric_guard", "to": "governance", "relation": "escalates", "artifact": "gaming_or_safety_alert"},
+    {"from": "governance", "to": "agent_los", "relation": "constrains", "artifact": "governance_directive"},
+    {"from": "governance", "to": "agent_return", "relation": "constrains", "artifact": "governance_directive"},
+    {"from": "governance", "to": "stop_handoff_node", "relation": "hands_off", "artifact": "governance_directive"},
+    {"from": "post_deploy_audit", "to": "stop_handoff_node", "relation": "hands_off", "artifact": "rollback_recommendation"},
+    {"from": "quality_committee_gate", "to": "stop_handoff_node", "relation": "hands_off", "artifact": "rejection_or_termination"}
+  ]
+}

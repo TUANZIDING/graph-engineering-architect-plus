@@ -1,0 +1,25 @@
+{
+ "schema_version": "1.1",
+ "title": "两个流程 Agent",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "改进出院流程",
+  "human_owner": "Bruce",
+  "observable_success": "两个指标都改善"
+ },
+ "nodes": [
+  {
+   "id": "a",
+   "kind": "execution_loop",
+   "responsibility": "缩短滞留时间，直接调整出院标准",
+   "optimizes": "los"
+  },
+  {
+   "id": "b",
+   "kind": "execution_loop",
+   "responsibility": "降低 72 小时返诊率，直接调整出院清单",
+   "optimizes": "revisit"
+  }
+ ],
+ "edges": []
+}

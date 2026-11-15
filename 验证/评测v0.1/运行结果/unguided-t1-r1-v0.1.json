@@ -1,0 +1,543 @@
+{
+  "schema_version": "1.1",
+  "title": "睡眠起始检测竞赛自动迭代控制架构",
+  "mode": "graph_plus_loop",
+  "state": "draft",
+  "rationale": "多个Agent并行做调参/特征/融合，属于有界迭代优化(loop)；但存在稀缺不可逆资源(公榜每日5次、最终仅1次上传)、公榜过拟合(Goodhart)风险、需要独立验证与人类最终闸门，故需图结构包住内部循环。",
+  "root_goal": {
+    "statement": "在隐藏测试集上取得尽可能高的最终成绩",
+    "human_owner": "Bruce",
+    "observable_success": "Bruce从经独立验证的候选中选定一个ZIP并亲自完成唯一一次最终上传；该候选在冻结的本地留出集(按受试者分组CV)上优于基线且与公榜方向一致",
+    "metrics": [
+      "local_grouped_cv_score",
+      "public_lb_score",
+      "cv_lb_gap",
+      "hidden_test_score"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "本地训练与调参",
+      "特征工程",
+      "模型融合",
+      "在本地冻结验证集上评估",
+      "在每日配额内提交公榜(需配额管理器批准)",
+      "写入实验登记表与候选库"
+    ],
+    "forbidden_actions": [
+      "最终阶段上传",
+      "修改冻结验证集划分或评测脚本",
+      "使用隐藏测试集或外部泄露标签",
+      "超出每日5次公榜提交",
+      "删除历史实验记录",
+      "以公榜分数直接作为唯一选型依据"
+    ]
+  },
+  "frozen_rules": [
+    "最终阶段上传只由Bruce执行，Agent只能提交候选与证据包",
+    "本地验证按受试者分组划分，划分种子与评测脚本冻结，任何Agent不得改写",
+    "公榜每日最多5次，其中至少保留1次给验证/对照，不得用尽在同一方向微调",
+    "选型以本地分组CV为主、公榜为辅；CV与公榜不一致时以CV为准并上报",
+    "每个候选ZIP需记录sha256、生成代码commit、数据版本，打包后不可改",
+    "禁止任何形式的测试集标签探测或重复提交逆推"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": {
+    "on_node_failure": "重试至max_retries后标记失败并跳过该分支，不阻塞其他分支",
+    "on_verifier_reject": "候选退回对应执行环，计一次迭代",
+    "on_quota_exhausted": "当日停止公榜提交，仅继续本地实验",
+    "on_cv_lb_divergence": "暂停融合环，升级给仲裁节点并通知Bruce",
+    "on_budget_exhausted": "冻结当前最优候选并交接给Bruce"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "预算或迭代上限用尽",
+      "连续3轮本地CV提升小于0.001(平台期)",
+      "距最终阶段截止<48小时",
+      "发现泄露、评测脚本被改或冻结规则被违反",
+      "CV与公榜持续背离超过阈值"
+    ],
+    "artifact": "最终候选证据包：Top-3候选ZIP(含sha256)、本地分组CV均值/方差、公榜历史、CV-LB差距、消融与风险说明、推荐理由"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "competition_rules",
+    "train_data",
+    "public_lb_feedback"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_holdout",
+      "source": "冻结的按受试者分组本地验证集与官方评测指标实现",
+      "evidence_form": "固定划分文件+评测脚本哈希+基线分数",
+      "owner": "Bruce",
+      "freshness_rule": "划分与脚本哈希每轮校验一致；规则变更时由Bruce重新确认",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_rules",
+      "source": "竞赛官方规则页(提交次数、最终阶段一次上传、格式要求)",
+      "evidence_form": "规则摘录与截止时间(含时区)",
+      "owner": "Bruce",
+      "freshness_rule": "每7天或规则公告变更时重新核对",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_holdout",
+      "kind": "anchor",
+      "responsibility": "提供冻结的本地分组验证集与评测脚本，是选型的主证据",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "train_data"
+        ],
+        "outputs": [
+          "holdout_split",
+          "eval_script_hash"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_rules",
+      "kind": "anchor",
+      "responsibility": "提供竞赛规则、配额与截止时间",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "competition_rules"
+        ],
+        "outputs": [
+          "rules_digest",
+          "deadlines"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "tune_loop",
+      "kind": "execution_loop",
+      "responsibility": "超参数搜索(单模型)，在本地分组CV上评估",
+      "owner": "agent:tuner",
+      "contract": {
+        "inputs": [
+          "holdout_split",
+          "train_data"
+        ],
+        "outputs": [
+          "tuned_models",
+          "experiment_records"
+        ]
+      },
+      "max_iterations": 30,
+      "optimizes": "local_grouped_cv_score",
+      "evidence_sources": [
+        "anchor_holdout"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "experiments/tune"
+      ],
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "feature_loop",
+      "kind": "execution_loop",
+      "responsibility": "特征工程与消融，产出特征集版本",
+      "owner": "agent:feature",
+      "contract": {
+        "inputs": [
+          "holdout_split",
+          "train_data"
+        ],
+        "outputs": [
+          "feature_sets",
+          "ablation_report"
+        ]
+      },
+      "max_iterations": 20,
+      "optimizes": "local_grouped_cv_score",
+      "evidence_sources": [
+        "anchor_holdout"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "experiments/features"
+      ],
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "registry",
+      "kind": "reducer",
+      "responsibility": "汇总所有实验到唯一实验登记表与候选库(单写者)，去重并打包候选ZIP记录sha256",
+      "owner": "agent:registrar",
+      "contract": {
+        "inputs": [
+          "tuned_models",
+          "experiment_records",
+          "feature_sets",
+          "ablation_report",
+          "blend_candidates"
+        ],
+        "outputs": [
+          "experiment_registry",
+          "candidate_pool"
+        ]
+      },
+      "side_effect": "internal-reversible",
+      "writes": [
+        "registry/experiments.csv",
+        "registry/candidates"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "blend_loop",
+      "kind": "execution_loop",
+      "responsibility": "在OOF预测上做模型融合/堆叠，权重只用训练折拟合",
+      "owner": "agent:blender",
+      "contract": {
+        "inputs": [
+          "candidate_pool",
+          "holdout_split"
+        ],
+        "outputs": [
+          "blend_candidates"
+        ]
+      },
+      "max_iterations": 15,
+      "optimizes": "local_grouped_cv_score",
+      "evidence_sources": [
+        "anchor_holdout"
+      ],
+      "side_effect": "internal-reversible",
+      "writes": [
+        "experiments/blend"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "verifier",
+      "kind": "verification_loop",
+      "responsibility": "独立复现候选：从commit重跑、核对sha256与提交格式、检查泄露(受试者跨折、未来信息)、多种子方差",
+      "owner": "agent:verifier",
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "candidate_pool",
+          "holdout_split",
+          "eval_script_hash",
+          "rules_digest"
+        ],
+        "outputs": [
+          "verified_candidates",
+          "verification_report"
+        ]
+      },
+      "max_iterations": 3,
+      "evidence_sources": [
+        "anchor_holdout",
+        "anchor_rules"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "registry/verification"
+      ],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "overfit_monitor",
+      "kind": "counter_metric_loop",
+      "responsibility": "Goodhart对冲：监控CV-LB差距、融合复杂度、多次比较带来的选择偏差，对追公榜行为发出否决",
+      "owner": "agent:counter",
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "experiment_registry",
+          "public_lb_history"
+        ],
+        "outputs": [
+          "overfit_alerts",
+          "cv_lb_gap_report"
+        ]
+      },
+      "max_iterations": 30,
+      "optimizes": "cv_lb_gap",
+      "evidence_sources": [
+        "anchor_holdout",
+        "public_lb_feedback"
+      ],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "quota_gate",
+      "kind": "governance_loop",
+      "responsibility": "管理每日5次公榜配额：选择最有信息量的已验证候选提交，保留对照位，记录公榜反馈",
+      "owner": "agent:quota",
+      "contract": {
+        "inputs": [
+          "verified_candidates",
+          "rules_digest",
+          "deadlines",
+          "overfit_alerts",
+          "public_lb_feedback"
+        ],
+        "outputs": [
+          "public_submissions",
+          "public_lb_history"
+        ]
+      },
+      "max_iterations": 5,
+      "side_effect": "high-risk",
+      "writes": [
+        "registry/public_lb_history"
+      ],
+      "evidence_sources": [
+        "anchor_rules"
+      ],
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "当CV与公榜冲突、或执行环与对冲环意见冲突时裁决，按priority_policy排序候选",
+      "owner": "agent:arbiter",
+      "priority_policy": "冻结规则 > 验证通过 > 本地分组CV均值-1σ > CV-LB一致性 > 公榜分数 > 简洁性",
+      "contract": {
+        "inputs": [
+          "verified_candidates",
+          "verification_report",
+          "cv_lb_gap_report",
+          "overfit_alerts",
+          "public_lb_history"
+        ],
+        "outputs": [
+          "ranked_shortlist",
+          "arbitration_notes"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "synthesis",
+      "kind": "synthesis",
+      "responsibility": "生成给Bruce的最终证据包与推荐",
+      "owner": "agent:arbiter",
+      "contract": {
+        "inputs": [
+          "ranked_shortlist",
+          "arbitration_notes",
+          "verification_report",
+          "public_lb_history"
+        ],
+        "outputs": [
+          "final_evidence_pack"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "bruce_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce审阅证据包，决定是否以及上传哪个ZIP到最终阶段(唯一一次，由Bruce亲自执行)",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "final_evidence_pack"
+        ],
+        "outputs": [
+          "final_decision"
+        ]
+      },
+      "side_effect": "high-risk",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "handoff",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时冻结状态并交接给Bruce",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "final_decision",
+          "experiment_registry",
+          "final_evidence_pack"
+        ],
+        "outputs": [
+          "handoff_record"
+        ]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {
+      "from": "anchor_holdout",
+      "to": "tune_loop",
+      "relation": "anchors",
+      "artifact": "holdout_split"
+    },
+    {
+      "from": "anchor_holdout",
+      "to": "feature_loop",
+      "relation": "anchors",
+      "artifact": "holdout_split"
+    },
+    {
+      "from": "anchor_holdout",
+      "to": "blend_loop",
+      "relation": "anchors",
+      "artifact": "holdout_split"
+    },
+    {
+      "from": "anchor_holdout",
+      "to": "verifier",
+      "relation": "anchors",
+      "artifact": "eval_script_hash"
+    },
+    {
+      "from": "anchor_rules",
+      "to": "verifier",
+      "relation": "constrains",
+      "artifact": "rules_digest"
+    },
+    {
+      "from": "anchor_rules",
+      "to": "quota_gate",
+      "relation": "constrains",
+      "artifact": "rules_digest"
+    },
+    {
+      "from": "tune_loop",
+      "to": "registry",
+      "relation": "feeds",
+      "artifact": "tuned_models"
+    },
+    {
+      "from": "feature_loop",
+      "to": "registry",
+      "relation": "feeds",
+      "artifact": "feature_sets"
+    },
+    {
+      "from": "feature_loop",
+      "to": "tune_loop",
+      "relation": "revises",
+      "artifact": "feature_sets"
+    },
+    {
+      "from": "registry",
+      "to": "blend_loop",
+      "relation": "feeds",
+      "artifact": "candidate_pool"
+    },
+    {
+      "from": "blend_loop",
+      "to": "registry",
+      "relation": "revises",
+      "artifact": "blend_candidates"
+    },
+    {
+      "from": "registry",
+      "to": "verifier",
+      "relation": "feeds",
+      "artifact": "candidate_pool"
+    },
+    {
+      "from": "registry",
+      "to": "overfit_monitor",
+      "relation": "feeds",
+      "artifact": "experiment_registry"
+    },
+    {
+      "from": "verifier",
+      "to": "quota_gate",
+      "relation": "verifies",
+      "artifact": "verified_candidates"
+    },
+    {
+      "from": "verifier",
+      "to": "arbiter",
+      "relation": "verifies",
+      "artifact": "verification_report"
+    },
+    {
+      "from": "overfit_monitor",
+      "to": "quota_gate",
+      "relation": "vetoes",
+      "artifact": "overfit_alerts"
+    },
+    {
+      "from": "overfit_monitor",
+      "to": "blend_loop",
+      "relation": "constrains",
+      "artifact": "overfit_alerts"
+    },
+    {
+      "from": "overfit_monitor",
+      "to": "arbiter",
+      "relation": "escalates",
+      "artifact": "cv_lb_gap_report"
+    },
+    {
+      "from": "quota_gate",
+      "to": "overfit_monitor",
+      "relation": "observes",
+      "artifact": "public_lb_history"
+    },
+    {
+      "from": "quota_gate",
+      "to": "arbiter",
+      "relation": "feeds",
+      "artifact": "public_lb_history"
+    },
+    {
+      "from": "arbiter",
+      "to": "synthesis",
+      "relation": "arbitrates",
+      "artifact": "ranked_shortlist"
+    },
+    {
+      "from": "synthesis",
+      "to": "bruce_gate",
+      "relation": "feeds",
+      "artifact": "final_evidence_pack"
+    },
+    {
+      "from": "bruce_gate",
+      "to": "handoff",
+      "relation": "hands_off",
+      "artifact": "final_decision"
+    },
+    {
+      "from": "registry",
+      "to": "handoff",
+      "relation": "feeds",
+      "artifact": "experiment_registry"
+    }
+  ]
+}

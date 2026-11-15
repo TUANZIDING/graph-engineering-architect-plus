@@ -1,0 +1,557 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊胸痛分诊助手提示词优化图（标准一致率为代理，结局安全为根）",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "在急诊预检台以辅助方式使用的胸痛分诊助手，能把高危胸痛（ACS/STEMI、主动脉夹层、肺栓塞、张力性气胸等）及时分到高级别，且分级与经科室重新确认、符合现行指南的胸痛分诊标准一致；与三年前旧标准的一致率只是代理指标，不是根结果。",
+    "human_owner": "Bruce",
+    "observable_success": "在优化回路从未接触过的留出真实胸痛病例集（以出院/30天随访确诊结局判定）上：高危胸痛漏分（undertriage）率不高于科室重新确认的阈值且不劣于现行护士分诊基线；各亚组（老年、女性、糖尿病、非典型症状）无显著更差；与经重新确认的标准一致率达到预设目标；静默影子期内无因助手导致的高危漏分事件；Bruce、急诊护士长与医务部签字同意进入辅助使用。",
+    "out_of_scope": [
+      "助手不得自主决定分级或替代预检护士的最终判断，只做建议",
+      "不包括胸痛以外主诉的分诊",
+      "不包括诊断、治疗或医嘱建议",
+      "优化回路不得修改、重定义或删减分诊标准本身与留出病例/结局标签",
+      "未经人工门批准不在真实患者流中上线"
+    ],
+    "metrics": [
+      "高危胸痛漏分率（按确诊结局）",
+      "亚组漏分率差异",
+      "过度分诊率",
+      "与重新确认标准的分级一致率"
+    ]
+  },
+  "classification_rationale": "单回路只会把与三年前标准的一致率推高：标准可能已过时（锚点衰减），一致率可被刷（提示词背规则、偏向模棱两可时取众数级别），而漏分高危胸痛是不可逆的患者伤害。需要：独立留出集上的一致率验证、以真实结局为锚的安全反指标、审计标准本身是否过时的慢回路、治理回路提议标准修订、仲裁优先级，以及上线前的人工门。因此是带一个提示词改写执行回路的图（graph_plus_loop）。",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "在开发病例切分上生成与改写分诊助手提示词候选",
+      "在沙箱中对候选提示词批量运行去标识化病例",
+      "提交候选与汇总评估报告供验证、反指标与审计节点使用",
+      "提议标准修订与阈值修改（仅提议）"
+    ],
+    "forbidden_actions": [
+      "读取留出病例集的逐例内容、结局标签或参考分级",
+      "修改、重写或删减科室胸痛分诊标准或其参考分级",
+      "修改验证脚本、反指标阈值、亚组定义或优先级政策",
+      "在真实预检台或患者流中部署或调用候选提示词",
+      "把助手输出设为强制分级或屏蔽护士修改",
+      "接触含可识别身份信息的病历"
+    ]
+  },
+  "frozen_rules": [
+    "科室胸痛分诊标准在本轮优化期间冻结；只有治理回路可提议修订，须经 Bruce 与科室分诊委员会批准并重新版本化",
+    "留出病例集及其确诊结局标签由急诊质控办持有，优化回路不可见、不可写",
+    "高危胸痛漏分是一票否决项：任何候选在留出集上漏分率高于阈值或劣于护士基线即否决，不得以一致率提升抵消",
+    "验证脚本、指标口径、亚组定义、阈值与优先级政策冻结，改动须经人工门",
+    "助手始终为辅助建议，最终分级由预检护士决定",
+    "上线须先经静默影子期，再经人工签字"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "failed": "候选连续未通过安全反指标或一致率验证达到迭代上限：保留当前上线版本（或不上线），把失败模式汇总交给 Bruce，不降低阈值。",
+    "blocked": "旧标准未完成重新确认、留出集结局标签缺失或过期、或审计发现标准与现行指南冲突：停止优化，向治理回路与 Bruce 升级，不以旧标准为金标准继续推一致率。",
+    "budget_exhausted": "达到预算或迭代上限：冻结最佳已验证候选（若有），写交接报告，由 Bruce 决定是否追加预算。"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed：候选通过一致率验证、安全反指标、审计无未决冲突、影子期达标并获人工门签字",
+      "failed：迭代上限内无候选同时满足安全与一致率要求",
+      "blocked：标准未重新确认、锚点过期或出现未解决的标准-结局冲突",
+      "budget_exhausted：预算或迭代用尽"
+    ],
+    "artifact": "handoff.md：最终候选提示词与版本、留出集评估表（漏分/过度分诊/亚组/一致率）、标准-结局分歧清单、影子期报告、签字记录"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "患者安全（高危漏分率与亚组公平）> 与真实确诊结局的一致性 > 与重新确认标准的一致率 > 过度分诊率/预检效率 > 提示词简洁性。标准与结局冲突时以结局为证据提交治理回路，而不是让提示词迎合旧标准。"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "胸痛分诊标准修订",
+      "阈值、亚组定义或优先级政策修改",
+      "进入影子期与辅助上线"
+    ]
+  },
+  "verification": {
+    "independence_statement": "一致率验证与安全反指标都在优化回路看不到的留出真实病例上运行，由确定性评分脚本执行；参考分级来自冻结的科室标准（由分诊委员会人工标注），安全判定来自独立的出院/30天确诊结局（病案与质控办数据，非标准、非模型产出）。评估者（质控办脚本）与数据来源（病案结局）均独立于改写提示词的 Agent。",
+    "checks": [
+      "agreement_verifier",
+      "safety_counter",
+      "standard_audit",
+      "shadow_outcome_monitor"
+    ]
+  },
+  "external_inputs": [
+    "dev_case_split（开发用去标识化病例与标准参考分级，与留出集不重叠）",
+    "current_guidelines（现行胸痛评估指南文本）",
+    "nurse_triage_baseline（现行护士分诊历史记录）",
+    "留出病例ID清单（质控办管理）"
+  ],
+  "anchors": [
+    {
+      "node_id": "outcome_anchor",
+      "source": "急诊质控办持有的留出去标识化胸痛病例集，标签为出院诊断与30天随访确诊结局（ACS/STEMI、夹层、肺栓塞等）",
+      "evidence_form": "病案系统导出的确诊结局与随访记录，按季度追加新病例",
+      "owner": "急诊质控办（Bruce 监督）",
+      "freshness_rule": "每季度追加最近病例并重新抽样；超过 120 天未刷新则视为过期，停止评估",
+      "frozen": true,
+      "max_age_days": 120,
+      "last_confirmed": "2026-11-01"
+    },
+    {
+      "node_id": "standard_anchor",
+      "source": "科室三年前制定的胸痛分诊标准，经分诊委员会对照现行指南重新确认后版本化",
+      "evidence_form": "签字版本化标准文档 + 委员会人工标注的病例参考分级",
+      "owner": "急诊科胸痛分诊委员会（Bruce 召集）",
+      "freshness_rule": "last_confirmed 为三年前制定日（约 2023-11，近似）：已超 365 天有效期，视为衰减锚点。作为金标准使用前必须由委员会对照现行指南重新确认、签字并更新 last_confirmed；此后每 12 个月或指南更新时复核；未重新确认前一致率验证与优化回路均为 blocked",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2023-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "prompt_rewriter",
+      "kind": "execution_loop",
+      "responsibility": "在开发病例切分上迭代改写分诊助手提示词，提出候选版本",
+      "owner": "提示词优化 Agent",
+      "cadence": "每次迭代",
+      "cadence_tier": "fast",
+      "max_iterations": 20,
+      "optimizes": "与重新确认标准的分级一致率",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "prompt_candidates/"
+      ],
+      "evidence_sources": [
+        "dev_case_split"
+      ],
+      "context_scope": "dev-only",
+      "contract": {
+        "inputs": [
+          "dev_case_split",
+          "一致率未达标否决 + 类别级错误汇总（不含留出逐例）",
+          "高危漏分/亚组安全否决",
+          "裁决记录与改写约束"
+        ],
+        "outputs": [
+          "候选提示词与版本号",
+          "开发集自评日志"
+        ]
+      }
+    },
+    {
+      "id": "outcome_anchor",
+      "kind": "anchor",
+      "responsibility": "提供优化回路不可见的留出真实病例与确诊结局",
+      "owner": "急诊质控办",
+      "cadence": "每季度刷新",
+      "cadence_tier": "slow",
+      "evidence_sources": [
+        "病案系统确诊结局"
+      ],
+      "contract": {
+        "inputs": [
+          "病案系统导出"
+        ],
+        "outputs": [
+          "留出病例集与结局标签"
+        ]
+      }
+    },
+    {
+      "id": "standard_anchor",
+      "kind": "anchor",
+      "responsibility": "提供重新确认并冻结的科室胸痛分诊标准及参考分级",
+      "owner": "急诊科胸痛分诊委员会",
+      "cadence": "每年复核或指南更新时",
+      "cadence_tier": "governance",
+      "evidence_sources": [
+        "科室胸痛分诊标准（重新确认版）"
+      ],
+      "contract": {
+        "inputs": [
+          "经人工门批准的标准版本"
+        ],
+        "outputs": [
+          "冻结标准与留出集参考分级"
+        ]
+      }
+    },
+    {
+      "id": "agreement_verifier",
+      "kind": "verification_loop",
+      "responsibility": "在留出病例上运行候选提示词，按冻结脚本计算与标准的分级一致率与重复运行稳定性，未达标即否决",
+      "owner": "急诊质控办（确定性评分脚本）",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "留出病例集",
+        "科室胸痛分诊标准（重新确认版）"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "候选提示词（版本化）",
+          "留出病例集",
+          "冻结标准与留出集参考分级"
+        ],
+        "outputs": [
+          "一致率与加权 kappa 报告",
+          "分歧病例清单（仅审计可见）",
+          "通过/否决"
+        ]
+      }
+    },
+    {
+      "id": "safety_counter",
+      "kind": "counter_metric_loop",
+      "responsibility": "以确诊结局为准，检查高危胸痛漏分率、亚组漏分差异、过度分诊率，并与护士基线比较；超阈值一票否决",
+      "owner": "急诊质控办 + 急诊医师复核",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "病案系统确诊结局",
+        "nurse_triage_baseline"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "候选提示词（版本化）",
+          "留出病例确诊结局标签",
+          "nurse_triage_baseline"
+        ],
+        "outputs": [
+          "漏分/过度分诊/亚组报告",
+          "安全否决"
+        ]
+      }
+    },
+    {
+      "id": "standard_audit",
+      "kind": "audit_loop",
+      "responsibility": "每月审查标准-结局分歧：助手与旧标准不一致但结局支持助手、或标准与现行指南冲突的病例；检查留出集分布漂移与泄漏",
+      "owner": "急诊科高年资医师（非提示词作者）",
+      "cadence": "每月",
+      "cadence_tier": "slow",
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "病案系统确诊结局",
+        "current_guidelines",
+        "科室胸痛分诊标准（重新确认版）"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "分歧病例清单",
+          "确诊结局与随访记录",
+          "冻结标准文本",
+          "current_guidelines"
+        ],
+        "outputs": [
+          "标准过时证据报告",
+          "漂移/泄漏审计记录"
+        ]
+      }
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "按冻结优先级裁决一致率与安全、过度分诊之间的冲突，决定候选是否进入人工门或打回",
+      "owner": "Bruce",
+      "cadence": "每个通过候选",
+      "cadence_tier": "human",
+      "priority_policy": "患者安全 > 结局一致性 > 标准一致率 > 过度分诊/效率 > 简洁性",
+      "contract": {
+        "inputs": [
+          "一致率与 kappa 报告",
+          "漏分/过度分诊/亚组报告",
+          "漂移/泄漏审计记录"
+        ],
+        "outputs": [
+          "裁决记录",
+          "对改写回路的约束"
+        ]
+      }
+    },
+    {
+      "id": "standard_governance",
+      "kind": "governance_loop",
+      "responsibility": "依据审计证据与现行指南，提议标准修订或阈值调整，仅提议不应用",
+      "owner": "急诊科胸痛分诊委员会（Bruce 召集）",
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "max_iterations": 4,
+      "evidence_sources": [
+        "current_guidelines",
+        "病案系统确诊结局"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "标准过时证据报告",
+          "current_guidelines"
+        ],
+        "outputs": [
+          "标准修订提案",
+          "阈值修改提案"
+        ]
+      }
+    },
+    {
+      "id": "shadow_outcome_monitor",
+      "kind": "counter_metric_loop",
+      "responsibility": "静默影子期：助手在预检台后台运行但不展示给护士，按真实就诊确诊结局核查高危漏分、亚组差异与护士基线对比；作为系统级结局检查，未达标即否决上线",
+      "owner": "急诊质控办 + 急诊护士长",
+      "cadence": "影子期每周汇总，至少 8 周",
+      "cadence_tier": "slow",
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "病案系统确诊结局",
+        "实时预检护士分诊记录"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "候选上线申请与裁决记录",
+          "确诊结局与随访记录"
+        ],
+        "outputs": [
+          "影子期安全报告与否决"
+        ]
+      }
+    },
+    {
+      "id": "deploy_gate",
+      "kind": "human_gate",
+      "responsibility": "批准标准修订；批准候选进入静默影子期，影子期达标后批准作为辅助建议上线",
+      "owner": "Bruce + 急诊护士长 + 医务部",
+      "cadence": "需要时",
+      "cadence_tier": "human",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "候选上线申请与裁决记录",
+          "标准修订/阈值修改提案",
+          "影子期安全报告与否决"
+        ],
+        "outputs": [
+          "签字批准/拒绝",
+          "新标准版本"
+        ]
+      }
+    },
+    {
+      "id": "assistive_deploy",
+      "kind": "execution",
+      "responsibility": "把已签字的提示词版本以辅助建议形式部署到急诊预检台，保留护士最终决定与一键回滚",
+      "owner": "信息科 + 急诊护士长",
+      "cadence": "每次获批上线",
+      "cadence_tier": "human",
+      "side_effect": "high-risk",
+      "writes": [
+        "预检台助手生产配置"
+      ],
+      "contract": {
+        "inputs": [
+          "签字批准的提示词版本与上线范围"
+        ],
+        "outputs": [
+          "上线/回滚记录"
+        ]
+      }
+    },
+    {
+      "id": "stop_node",
+      "kind": "stop_handoff",
+      "responsibility": "按四种终态写交接报告并归档",
+      "owner": "Bruce",
+      "cadence": "终止时",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "签字记录与影子期报告",
+          "上线/回滚记录"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "prompt_rewriter",
+      "to": "agreement_verifier",
+      "relation": "feeds",
+      "artifact": "候选提示词（版本化）"
+    },
+    {
+      "from": "prompt_rewriter",
+      "to": "safety_counter",
+      "relation": "feeds",
+      "artifact": "候选提示词（版本化）"
+    },
+    {
+      "from": "standard_anchor",
+      "to": "agreement_verifier",
+      "relation": "anchors",
+      "artifact": "冻结标准与留出集参考分级"
+    },
+    {
+      "from": "outcome_anchor",
+      "to": "agreement_verifier",
+      "relation": "anchors",
+      "artifact": "留出病例集"
+    },
+    {
+      "from": "outcome_anchor",
+      "to": "safety_counter",
+      "relation": "anchors",
+      "artifact": "留出病例确诊结局标签"
+    },
+    {
+      "from": "outcome_anchor",
+      "to": "standard_audit",
+      "relation": "anchors",
+      "artifact": "确诊结局与随访记录"
+    },
+    {
+      "from": "standard_anchor",
+      "to": "standard_audit",
+      "relation": "anchors",
+      "artifact": "冻结标准文本"
+    },
+    {
+      "from": "agreement_verifier",
+      "to": "prompt_rewriter",
+      "relation": "vetoes",
+      "artifact": "一致率未达标否决 + 类别级错误汇总（不含留出逐例）"
+    },
+    {
+      "from": "safety_counter",
+      "to": "prompt_rewriter",
+      "relation": "vetoes",
+      "artifact": "高危漏分/亚组安全否决"
+    },
+    {
+      "from": "agreement_verifier",
+      "to": "arbiter",
+      "relation": "verifies",
+      "artifact": "一致率与 kappa 报告"
+    },
+    {
+      "from": "safety_counter",
+      "to": "arbiter",
+      "relation": "verifies",
+      "artifact": "漏分/过度分诊/亚组报告"
+    },
+    {
+      "from": "agreement_verifier",
+      "to": "standard_audit",
+      "relation": "feeds",
+      "artifact": "分歧病例清单"
+    },
+    {
+      "from": "standard_audit",
+      "to": "arbiter",
+      "relation": "constrains",
+      "artifact": "漂移/泄漏审计记录"
+    },
+    {
+      "from": "standard_audit",
+      "to": "standard_governance",
+      "relation": "escalates",
+      "artifact": "标准过时证据报告"
+    },
+    {
+      "from": "arbiter",
+      "to": "prompt_rewriter",
+      "relation": "constrains",
+      "artifact": "裁决记录与改写约束"
+    },
+    {
+      "from": "arbiter",
+      "to": "deploy_gate",
+      "relation": "escalates",
+      "artifact": "候选上线申请与裁决记录"
+    },
+    {
+      "from": "standard_governance",
+      "to": "deploy_gate",
+      "relation": "escalates",
+      "artifact": "标准修订/阈值修改提案"
+    },
+    {
+      "from": "deploy_gate",
+      "to": "standard_anchor",
+      "relation": "revises",
+      "artifact": "经批准的新标准版本"
+    },
+    {
+      "from": "arbiter",
+      "to": "shadow_outcome_monitor",
+      "relation": "feeds",
+      "artifact": "候选上线申请与裁决记录"
+    },
+    {
+      "from": "outcome_anchor",
+      "to": "shadow_outcome_monitor",
+      "relation": "anchors",
+      "artifact": "确诊结局与随访记录"
+    },
+    {
+      "from": "shadow_outcome_monitor",
+      "to": "deploy_gate",
+      "relation": "vetoes",
+      "artifact": "影子期安全报告与否决"
+    },
+    {
+      "from": "deploy_gate",
+      "to": "prompt_rewriter",
+      "relation": "constrains",
+      "artifact": "签字的优化范围、冻结项与上线/回滚决定"
+    },
+    {
+      "from": "deploy_gate",
+      "to": "assistive_deploy",
+      "relation": "constrains",
+      "artifact": "签字批准的提示词版本与上线范围"
+    },
+    {
+      "from": "assistive_deploy",
+      "to": "stop_node",
+      "relation": "hands_off",
+      "artifact": "上线/回滚记录"
+    },
+    {
+      "from": "deploy_gate",
+      "to": "stop_node",
+      "relation": "hands_off",
+      "artifact": "签字记录与影子期报告"
+    }
+  ]
+}

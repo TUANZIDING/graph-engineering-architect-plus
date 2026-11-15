@@ -1,0 +1,1 @@
+2026-11-15 18:35 CST: t13 r2 (guided/unguided) dispatched with wrong brief (02:00 NAS backup, not frozen task text). Moved here, excluded, rerun with frozen brief.

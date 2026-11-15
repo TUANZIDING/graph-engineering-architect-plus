@@ -1,0 +1,6 @@
+{
+ "schema_version": "1.1",
+ "title": "每周重训",
+ "mode": "loop",
+ "rationale": "每周训练、同月算 AUC、涨了就替换，一个回路就够"
+}

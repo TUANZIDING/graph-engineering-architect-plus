@@ -1,0 +1,641 @@
+{
+ "schema_version": "1.1",
+ "title": "科研代码库失败测试修复系统（测试与合并权限分离版）",
+ "mode": "graph_plus_loop",
+ "state": "designed",
+ "classification_rationale": "原设计让同一个编程 Agent 既修代码、又改测试、又自动合并，而完成判据是“测试全绿”：改进者能改写自己的裁判（删/弱化断言、加 skip、改期望值即可变绿），这是典型的元回路劫持与刷分。单回路不够：需要冻结的测试锚点、独立 CI 验证者、反指标（变异测试/断言删减/科学参考输出）、合并前人工门，以及修代码与补测试两条速度不同的回路之间的仲裁。存在执行者无法改写的证据源（冻结基线测试 + 科学参考输出 + 干净 CI 实际执行），因此不是 blocked，而是 graph_plus_loop。",
+ "root_goal": {
+  "statement": "科研代码库在冻结的基线测试与科学参考输出上真实通过，且新增测试真正提升缺陷检出能力，而不是通过改测试让结果变绿。",
+  "human_owner": "Bruce",
+  "observable_success": "在干净 CI 环境中，从 main 检出：冻结基线测试套件 100% 通过且 skip/xfail 数不增加；科学参考输出（黄金数据集的数值结果）在预设容差内复现；新增测试经变异测试证明能杀死变异体且在修复前代码上能失败；断言总数与覆盖率不下降；每次合并有 Bruce 的批准记录。",
+  "metrics": [
+   "frozen_suite_pass_rate",
+   "reference_output_reproduction",
+   "mutation_kill_rate",
+   "assertion_count_delta",
+   "skip_xfail_count"
+  ],
+  "out_of_scope": [
+   "Agent 修改或删除已有测试、期望值、容差、CI 配置",
+   "Agent 直接合并到 main",
+   "改动科研算法的科学含义以通过测试"
+  ]
+ },
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "在 feature 分支修改非测试源代码",
+   "在独立分支新增测试文件（仅新增）",
+   "运行本地测试",
+   "开 PR 并附证据包",
+   "提议修改已有测试（仅以提案形式提交 Bruce）"
+  ],
+  "forbidden_actions": [
+   "修改或删除冻结基线测试、断言、期望值、容差",
+   "添加 skip/xfail/条件跳过标记",
+   "修改 CI 配置、测试运行器、覆盖率/变异阈值",
+   "修改科学参考输出数据",
+   "直接推送或自动合并到 main",
+   "修改本图的目标、锚点、权限或冻结规则"
+  ]
+ },
+ "frozen_rules": [
+  "基线测试套件在启动时按 commit hash 冻结，任何改动需 Bruce 批准并记录",
+  "科学参考输出与容差由 Bruce 拥有，Agent 只读",
+  "CI 配置、测试运行器、阈值对执行回路只读（CODEOWNERS + 分支保护）",
+  "合并到 main 必须经 Bruce 批准；不允许自动合并",
+  "修代码与补测试不得在同一个 PR 中完成，补测试的 PR 不得包含源代码修复",
+  "完成判据不能只是“测试全绿”，必须同时满足反指标与参考输出"
+ ],
+ "approval": {
+  "status": "pending"
+ },
+ "budget": {
+  "max_agents": 7,
+  "max_concurrency": 2,
+  "max_retries": 3,
+  "max_cost_units": 200
+ },
+ "failure_policy": {
+  "failed": "单个失败测试修复达迭代上限仍未通过，或验证/反指标持续否决 → 停止该项，升级 Bruce，不得降低标准重试",
+  "blocked": "失败疑似源于测试本身错误或需求不明 → 以提案提交 Bruce 裁决，不得自行修改测试；锚点过期或哈希不符 → 全局暂停",
+  "budget_exhausted": "成本或迭代预算耗尽 → 停止并交接未完成清单与证据包"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "completed: 冻结套件全绿 + 参考输出复现 + 反指标无告警 + Bruce 批准合并",
+   "blocked: 失败源于测试本身疑似错误或需求不明，等待 Bruce 裁决",
+   "failed: 达到重试/迭代上限仍未修复，或验证持续否决",
+   "budget_exhausted: 成本或迭代预算耗尽，交接未完成清单"
+  ],
+  "artifact": "handoff.md：已修复/未修复测试清单、每个 PR 的证据包、反指标报告、待 Bruce 裁决的测试修改提案"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "frozen_test_anchor",
+   "source": "启动时按 commit hash 冻结的基线测试套件，在干净 CI 中实际执行",
+   "evidence_form": "CI 执行日志 + junit 报告 + 测试文件哈希清单",
+   "owner": "Bruce",
+   "freshness_rule": "每个候选 PR 重新执行；测试文件哈希每次比对；冻结版本需 Bruce 每 30 天确认一次",
+   "frozen": true,
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-15"
+  },
+  {
+   "node_id": "reference_output_anchor",
+   "source": "Bruce 维护的黄金数据集与已发表/已验证的科学参考数值结果（独立于测试代码与 Agent）",
+   "evidence_form": "参考输出文件哈希 + 数值比对报告（预设容差）",
+   "owner": "Bruce",
+   "freshness_rule": "每个候选 PR 复算；参考数据每 90 天由 Bruce 确认仍有效",
+   "frozen": true,
+   "max_age_days": 90,
+   "last_confirmed": "2026-11-15"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "frozen_test_anchor",
+   "kind": "anchor",
+   "responsibility": "提供冻结的基线测试套件及其哈希，作为执行者无法改写的现实锚点",
+   "owner": "Bruce",
+   "cadence": "启动时冻结，每30天确认",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "baseline_commit_hash"
+    ],
+    "outputs": [
+     "frozen_test_suite",
+     "test_hash_manifest"
+    ]
+   },
+   "evidence_sources": [
+    "frozen_baseline_repo_snapshot"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "reference_output_anchor",
+   "kind": "anchor",
+   "responsibility": "提供独立于测试代码的科学参考输出与容差",
+   "owner": "Bruce",
+   "cadence": "每90天确认",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "golden_dataset"
+    ],
+    "outputs": [
+     "reference_outputs",
+     "tolerance_spec"
+    ]
+   },
+   "evidence_sources": [
+    "bruce_golden_dataset"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "fix_loop",
+   "kind": "execution_loop",
+   "responsibility": "逐个修复失败测试，只改非测试源代码，在 feature 分支开 PR 并附证据包",
+   "owner": "coding_agent",
+   "cadence": "每次迭代",
+   "cadence_tier": "fast",
+   "max_iterations": 8,
+   "contract": {
+    "inputs": [
+     "failing_test_list",
+     "frozen_test_suite",
+     "verifier_feedback",
+     "counter_metric_report",
+     "arbitration_decision"
+    ],
+    "outputs": [
+     "fix_pr",
+     "local_test_log",
+     "test_change_proposal"
+    ]
+   },
+   "optimizes": "frozen_suite_pass_rate",
+   "evidence_sources": [
+    "agent_workspace"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "feature_branch_src"
+   ]
+  },
+  {
+   "id": "test_addition_loop",
+   "kind": "execution_loop",
+   "responsibility": "在独立分支只新增测试用例以覆盖更多情况；不得修改已有测试，不得含源代码修复；对已有测试的修改意见只能作为提案",
+   "owner": "test_agent",
+   "cadence": "每批新测试",
+   "cadence_tier": "fast",
+   "max_iterations": 5,
+   "contract": {
+    "inputs": [
+     "frozen_test_suite",
+     "coverage_report",
+     "verifier_feedback",
+     "counter_metric_report",
+     "arbitration_decision"
+    ],
+    "outputs": [
+     "new_tests_pr",
+     "test_change_proposal"
+    ]
+   },
+   "optimizes": "mutation_kill_rate",
+   "evidence_sources": [
+    "agent_workspace"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "feature_branch_tests_new"
+   ]
+  },
+  {
+   "id": "ci_verifier",
+   "kind": "verification_loop",
+   "responsibility": "在干净 CI 环境从 PR 检出，用冻结套件哈希比对后实际运行全部测试与参考输出复算；检测测试文件是否被改动；不通过即否决",
+   "owner": "ci_system",
+   "cadence": "每个候选 PR",
+   "cadence_tier": "medium",
+   "max_iterations": 1,
+   "context_scope": "fresh-independent",
+   "contract": {
+    "inputs": [
+     "fix_pr",
+     "new_tests_pr",
+     "frozen_test_suite",
+     "test_hash_manifest",
+     "reference_outputs",
+     "tolerance_spec"
+    ],
+    "outputs": [
+     "ci_verdict",
+     "verifier_feedback"
+    ]
+   },
+   "evidence_sources": [
+    "clean_ci_execution",
+    "frozen_baseline_repo_snapshot",
+    "bruce_golden_dataset"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "counter_metric_check",
+   "kind": "counter_metric_loop",
+   "responsibility": "拆穿便宜的变绿：断言数/测试数差分、skip/xfail 增量、覆盖率下降、变异测试杀死率、新增测试在修复前代码上能否失败、是否只针对特定输入硬编码",
+   "owner": "mutation_testing_service",
+   "cadence": "每个候选 PR",
+   "cadence_tier": "medium",
+   "max_iterations": 1,
+   "context_scope": "fresh-independent",
+   "contract": {
+    "inputs": [
+     "fix_pr",
+     "new_tests_pr",
+     "frozen_test_suite",
+     "reference_outputs"
+    ],
+    "outputs": [
+     "counter_metric_report"
+    ]
+   },
+   "evidence_sources": [
+    "mutation_testing_run",
+    "git_diff_main",
+    "bruce_golden_dataset"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "当 CI 验证与反指标结论冲突、或修代码回路与补测试回路互相拉扯（新测试让已修复项重新变红）时按优先级裁决",
+   "owner": "Bruce",
+   "cadence": "冲突时",
+   "cadence_tier": "human",
+   "priority_policy": "科学参考输出正确性 > 冻结基线测试通过 > 反指标（不弱化测试、变异杀死率不降）> 新增测试覆盖 > 修复速度；新测试暴露真实缺陷时以修代码为准，不得回退新测试；无法判断时升级 Bruce",
+   "contract": {
+    "inputs": [
+     "ci_verdict",
+     "counter_metric_report"
+    ],
+    "outputs": [
+     "arbitration_decision"
+    ]
+   },
+   "evidence_sources": [
+    "clean_ci_execution",
+    "mutation_testing_run"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "merge_gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 审阅证据包（CI 结果、参考输出比对、反指标报告、diff）后决定是否合并到 main；取代原设计中的自动合并",
+   "owner": "Bruce",
+   "cadence": "每个通过验证的 PR",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "ci_verdict",
+     "counter_metric_report",
+     "arbitration_decision",
+     "fix_pr",
+     "new_tests_pr"
+    ],
+    "outputs": [
+     "merge_decision"
+    ]
+   },
+   "side_effect": "none",
+   "writes": []
+  },
+  {
+   "id": "weekly_audit",
+   "kind": "audit_loop",
+   "responsibility": "每周审计：main 上 flaky 测试趋势、skip/xfail 总量、测试哈希是否与冻结清单一致、参考输出是否漂移、新增测试是否有冗余或重言式断言",
+   "owner": "audit_agent",
+   "cadence": "每周",
+   "cadence_tier": "slow",
+   "max_iterations": 1,
+   "context_scope": "fresh-independent",
+   "contract": {
+    "inputs": [
+     "merge_commit_record",
+     "test_hash_manifest",
+     "reference_outputs"
+    ],
+    "outputs": [
+     "audit_report"
+    ]
+   },
+   "evidence_sources": [
+    "main_branch_ci_history",
+    "frozen_baseline_repo_snapshot",
+    "bruce_golden_dataset"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "test_governance",
+   "kind": "governance_loop",
+   "responsibility": "汇总 Agent 提交的已有测试修改提案与审计结论，形成修订建议，提交 Bruce 签字门；本节点不直接改锚点",
+   "owner": "Bruce",
+   "cadence": "每月或有提案时",
+   "cadence_tier": "governance",
+   "max_iterations": 1,
+   "contract": {
+    "inputs": [
+     "test_change_proposal",
+     "audit_report"
+    ],
+    "outputs": [
+     "approved_baseline_revision"
+    ]
+   },
+   "side_effect": "internal-reversible",
+   "writes": []
+  },
+  {
+   "id": "stop_handoff_node",
+   "kind": "stop_handoff",
+   "responsibility": "按四态终止并生成交接",
+   "owner": "Bruce",
+   "cadence": "终止时",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "merge_commit_record",
+     "audit_report",
+     "ci_verdict"
+    ],
+    "outputs": [
+     "handoff_md"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "baseline_revision_gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 签字批准对冻结基线测试/容差/参考输出的任何修订，批准后重新冻结并记录哈希",
+   "owner": "Bruce",
+   "cadence": "有修订提案时",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "approved_baseline_revision"
+    ],
+    "outputs": [
+     "signed_baseline_revision"
+    ]
+   },
+   "side_effect": "none",
+   "writes": []
+  },
+  {
+   "id": "merge_executor",
+   "kind": "execution",
+   "responsibility": "仅在持有 Bruce 批准记录时，用分支保护下的合并机器人把已验证 PR 合并到 main，并记录 merge commit",
+   "owner": "merge_bot",
+   "cadence": "每个获批 PR",
+   "cadence_tier": "medium",
+   "contract": {
+    "inputs": [
+     "merge_decision"
+    ],
+    "outputs": [
+     "merge_commit_record"
+    ]
+   },
+   "side_effect": "high-risk",
+   "writes": [
+    "main_branch"
+   ]
+  }
+ ],
+ "external_inputs": [
+  "baseline_commit_hash",
+  "golden_dataset",
+  "failing_test_list",
+  "coverage_report"
+ ],
+ "edges": [
+  {
+   "from": "frozen_test_anchor",
+   "to": "ci_verifier",
+   "relation": "anchors",
+   "artifact": "frozen_test_suite + test_hash_manifest"
+  },
+  {
+   "from": "frozen_test_anchor",
+   "to": "counter_metric_check",
+   "relation": "anchors",
+   "artifact": "frozen_test_suite"
+  },
+  {
+   "from": "frozen_test_anchor",
+   "to": "fix_loop",
+   "relation": "constrains",
+   "artifact": "frozen_test_suite（只读）"
+  },
+  {
+   "from": "frozen_test_anchor",
+   "to": "test_addition_loop",
+   "relation": "constrains",
+   "artifact": "frozen_test_suite（只读，仅可新增）"
+  },
+  {
+   "from": "frozen_test_anchor",
+   "to": "weekly_audit",
+   "relation": "anchors",
+   "artifact": "test_hash_manifest"
+  },
+  {
+   "from": "reference_output_anchor",
+   "to": "ci_verifier",
+   "relation": "anchors",
+   "artifact": "reference_outputs + tolerance_spec"
+  },
+  {
+   "from": "reference_output_anchor",
+   "to": "counter_metric_check",
+   "relation": "anchors",
+   "artifact": "reference_outputs"
+  },
+  {
+   "from": "reference_output_anchor",
+   "to": "weekly_audit",
+   "relation": "anchors",
+   "artifact": "reference_outputs"
+  },
+  {
+   "from": "fix_loop",
+   "to": "ci_verifier",
+   "relation": "feeds",
+   "artifact": "fix_pr"
+  },
+  {
+   "from": "fix_loop",
+   "to": "counter_metric_check",
+   "relation": "feeds",
+   "artifact": "fix_pr"
+  },
+  {
+   "from": "test_addition_loop",
+   "to": "ci_verifier",
+   "relation": "feeds",
+   "artifact": "new_tests_pr"
+  },
+  {
+   "from": "test_addition_loop",
+   "to": "counter_metric_check",
+   "relation": "feeds",
+   "artifact": "new_tests_pr"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "fix_loop",
+   "relation": "vetoes",
+   "artifact": "ci_verdict + verifier_feedback"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "test_addition_loop",
+   "relation": "vetoes",
+   "artifact": "ci_verdict + verifier_feedback"
+  },
+  {
+   "from": "counter_metric_check",
+   "to": "fix_loop",
+   "relation": "vetoes",
+   "artifact": "counter_metric_report"
+  },
+  {
+   "from": "counter_metric_check",
+   "to": "test_addition_loop",
+   "relation": "vetoes",
+   "artifact": "counter_metric_report"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "ci_verdict"
+  },
+  {
+   "from": "counter_metric_check",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "counter_metric_report"
+  },
+  {
+   "from": "arbiter",
+   "to": "fix_loop",
+   "relation": "arbitrates",
+   "artifact": "arbitration_decision"
+  },
+  {
+   "from": "arbiter",
+   "to": "test_addition_loop",
+   "relation": "arbitrates",
+   "artifact": "arbitration_decision"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "merge_gate",
+   "relation": "verifies",
+   "artifact": "ci_verdict"
+  },
+  {
+   "from": "counter_metric_check",
+   "to": "merge_gate",
+   "relation": "constrains",
+   "artifact": "counter_metric_report"
+  },
+  {
+   "from": "arbiter",
+   "to": "merge_gate",
+   "relation": "feeds",
+   "artifact": "arbitration_decision"
+  },
+  {
+   "from": "fix_loop",
+   "to": "merge_gate",
+   "relation": "feeds",
+   "artifact": "fix_pr"
+  },
+  {
+   "from": "test_addition_loop",
+   "to": "merge_gate",
+   "relation": "feeds",
+   "artifact": "new_tests_pr"
+  },
+  {
+   "from": "fix_loop",
+   "to": "test_governance",
+   "relation": "escalates",
+   "artifact": "test_change_proposal"
+  },
+  {
+   "from": "test_addition_loop",
+   "to": "test_governance",
+   "relation": "escalates",
+   "artifact": "test_change_proposal"
+  },
+  {
+   "from": "merge_executor",
+   "to": "weekly_audit",
+   "relation": "feeds",
+   "artifact": "merge_commit_record"
+  },
+  {
+   "from": "weekly_audit",
+   "to": "test_governance",
+   "relation": "escalates",
+   "artifact": "audit_report"
+  },
+  {
+   "from": "merge_executor",
+   "to": "stop_handoff_node",
+   "relation": "hands_off",
+   "artifact": "merge_commit_record"
+  },
+  {
+   "from": "weekly_audit",
+   "to": "stop_handoff_node",
+   "relation": "hands_off",
+   "artifact": "audit_report"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "stop_handoff_node",
+   "relation": "escalates",
+   "artifact": "ci_verdict（迭代上限仍否决）"
+  },
+  {
+   "from": "test_governance",
+   "to": "baseline_revision_gate",
+   "relation": "escalates",
+   "artifact": "approved_baseline_revision（修订建议）"
+  },
+  {
+   "from": "baseline_revision_gate",
+   "to": "frozen_test_anchor",
+   "relation": "revises",
+   "artifact": "signed_baseline_revision（Bruce 签字后重新冻结）"
+  },
+  {
+   "from": "merge_gate",
+   "to": "fix_loop",
+   "relation": "constrains",
+   "artifact": "merge_decision（拒绝即退回，未批准不得合并）"
+  },
+  {
+   "from": "merge_gate",
+   "to": "test_addition_loop",
+   "relation": "constrains",
+   "artifact": "merge_decision（拒绝即退回）"
+  },
+  {
+   "from": "merge_gate",
+   "to": "merge_executor",
+   "relation": "constrains",
+   "artifact": "merge_decision（Bruce 批准记录）"
+  }
+ ],
+ "independence_statement": "CI 验证者与反指标检查在干净环境从仓库检出，按冻结哈希取测试、读 Bruce 拥有的参考输出，不读取 Agent 的本地日志或自述；执行回路对测试、CI 配置、参考数据和阈值只读。",
+ "goal_change": "human_approval"
+}

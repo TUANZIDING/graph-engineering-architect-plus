@@ -1,0 +1,1052 @@
+[
+ {
+  "task": "t10",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有仲裁与优先级": true,
+   "两个指标都被跟踪": true,
+   "有病人安全反指标": true,
+   "变更须人工门": true,
+   "Agent 不能单独改共享标准": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t10-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t10",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有仲裁与优先级": true,
+   "两个指标都被跟踪": true,
+   "有病人安全反指标": true,
+   "变更须人工门": true,
+   "Agent 不能单独改共享标准": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t10-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t10",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有仲裁与优先级": true,
+   "两个指标都被跟踪": true,
+   "有病人安全反指标": true,
+   "变更须人工门": true,
+   "Agent 不能单独改共享标准": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t10-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t11",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "复核者独立从原文提取": true,
+   "锚点是原始文献": true,
+   "不一致有裁决": true,
+   "有偏倚/异质性审计": true,
+   "写入论文前有人工门": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t11-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t11",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "复核者独立从原文提取": true,
+   "锚点是原始文献": true,
+   "不一致有裁决": true,
+   "有偏倚/异质性审计": true,
+   "写入论文前有人工门": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t11-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t11",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "复核者独立从原文提取": true,
+   "锚点是原始文献": true,
+   "不一致有裁决": true,
+   "有偏倚/异质性审计": false,
+   "写入论文前有人工门": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": false,
+  "structural_pass": true,
+  "semantic_rate": 0.8333333333333334,
+  "file": "guided-t11-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t12",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 direct/linear_workflow（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t12-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t12",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 direct/linear_workflow（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t12-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t12",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 direct/linear_workflow（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t12-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t13",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 loop/linear_workflow/direct（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t13-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t13",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 loop/linear_workflow/direct（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t13-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t13",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 loop/linear_workflow/direct（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t13-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t7",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有训练窗口之外的验证锚点": true,
+   "禁止用训练同月数据验收或自动替换": true,
+   "有校准/漂移/亚组反指标": true,
+   "替换线上模型须人工门": true,
+   "成功标准不只是 AUC 上涨": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t7-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t7",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有训练窗口之外的验证锚点": true,
+   "禁止用训练同月数据验收或自动替换": false,
+   "有校准/漂移/亚组反指标": true,
+   "替换线上模型须人工门": true,
+   "成功标准不只是 AUC 上涨": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": false,
+  "structural_pass": true,
+  "semantic_rate": 0.8333333333333334,
+  "file": "guided-t7-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t7",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有训练窗口之外的验证锚点": true,
+   "禁止用训练同月数据验收或自动替换": false,
+   "有校准/漂移/亚组反指标": true,
+   "替换线上模型须人工门": true,
+   "成功标准不只是 AUC 上涨": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": false,
+  "structural_pass": true,
+  "semantic_rate": 0.8333333333333334,
+  "file": "guided-t7-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t8",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "既有测试作为冻结锚点": true,
+   "禁止修复者删改/弱化既有测试": true,
+   "新增测试由独立方审查": true,
+   "合并主分支须人工门": true,
+   "修复者不能改裁判": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t8-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t8",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "既有测试作为冻结锚点": true,
+   "禁止修复者删改/弱化既有测试": true,
+   "新增测试由独立方审查": true,
+   "合并主分支须人工门": true,
+   "修复者不能改裁判": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t8-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t8",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "既有测试作为冻结锚点": true,
+   "禁止修复者删改/弱化既有测试": true,
+   "新增测试由独立方审查": true,
+   "合并主分支须人工门": true,
+   "修复者不能改裁判": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t8-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t9",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "锚点包含真实结局": true,
+   "三年前标准需复审/时效检查": true,
+   "有防低估分级反指标": true,
+   "上线预检台须人工门": true,
+   "一致率不是唯一成功标准": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t9-r1-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t9",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "锚点包含真实结局": true,
+   "三年前标准需复审/时效检查": true,
+   "有防低估分级反指标": true,
+   "上线预检台须人工门": true,
+   "一致率不是唯一成功标准": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": true
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [],
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "guided-t9-r2-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t9",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "锚点包含真实结局": true,
+   "三年前标准需复审/时效检查": true,
+   "有防低估分级反指标": true,
+   "上线预检台须人工门": true,
+   "一致率不是唯一成功标准": true
+  },
+  "structural": {
+   "validate 无错误": true,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [],
+  "diagnose_patterns": [
+   "decayed_measurement"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "guided-t9-r3-v0.2.json",
+  "condition": "guided"
+ },
+ {
+  "task": "t10",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有仲裁与优先级": true,
+   "两个指标都被跟踪": true,
+   "有病人安全反指标": true,
+   "变更须人工门": true,
+   "Agent 不能单独改共享标准": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-SAMEOWNER: safety_verifier shares an owner with ['los_optimizer', 'return_optimizer']; a maker cannot grade itself"
+  ],
+  "diagnose_patterns": [
+   "watcher_theater",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t10-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t10",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有仲裁与优先级": true,
+   "两个指标都被跟踪": true,
+   "有病人安全反指标": true,
+   "变更须人工门": true,
+   "Agent 不能单独改共享标准": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-CONTRACT: anchor_his_emr_outcomes: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-CONTRACT: anchor_safety_baseline: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-ANCHORWRITE: change_implementer -> anchor_his_emr_outcomes (observes): only a human_gate may touch an anchor",
+   "E-VNOTEETH: independent_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-SAMEOWNER: independent_verifier shares an owner with ['arbitration_merge']; a maker cannot grade itself"
+  ],
+  "diagnose_patterns": [
+   "meta_loop_capture",
+   "watcher_theater",
+   "decorative_graph",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t10-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t10",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有仲裁与优先级": true,
+   "两个指标都被跟踪": true,
+   "有病人安全反指标": true,
+   "变更须人工门": true,
+   "Agent 不能单独改共享标准": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: independent_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-SAMEOWNER: independent_verifier shares an owner with ['arbiter']; a maker cannot grade itself"
+  ],
+  "diagnose_patterns": [
+   "watcher_theater",
+   "decorative_graph",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t10-r3-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t11",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "复核者独立从原文提取": true,
+   "锚点是原始文献": true,
+   "不一致有裁决": true,
+   "有偏倚/异质性审计": true,
+   "写入论文前有人工门": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-VNOANCHOR: pool_reimplement: verifier receives no anchor; it can only re-read the executor's view",
+   "E-CIRCULAR: pool_reimplement and pool_B both rely on ['locked_extraction_table'] → mutual confirmation, not verification",
+   "E-GOODHART: source_audit optimises 'audit_error_rate' with no counter_metric_loop/audit_loop watching it",
+   "E-GOODHART: pool_reimplement optimises 'pooled_estimate_reproduction_diff' with no counter_metric_loop/audit_loop watching it",
+   "E-DEADEND: write_manuscript cannot reach a stop_handoff; its result has nowhere to go"
+  ],
+  "diagnose_patterns": [
+   "circular_confirmation",
+   "watcher_theater",
+   "metric_gaming",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t11-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t11",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "复核者独立从原文提取": true,
+   "锚点是原始文献": true,
+   "不一致有裁决": true,
+   "有偏倚/异质性审计": false,
+   "写入论文前有人工门": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-CONTRACT: anchor_sources: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-CONTRACT: anchor_protocol: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-FAIL: failure_policy is required",
+   "E-VNOANCHOR: analysis_replication: verifier receives no anchor; it can only re-read the executor's view",
+   "E-GOODHART: spotcheck_counter optimises 'source_spotcheck_error_rate' with no counter_metric_loop/audit_loop watching it",
+   "E-GATEFIRST: bruce_gate is high-risk but no human_gate lies upstream of it"
+  ],
+  "diagnose_patterns": [
+   "watcher_theater",
+   "metric_gaming",
+   "loop_conflict",
+   "loop_conflict"
+  ],
+  "semantic_pass": false,
+  "structural_pass": false,
+  "semantic_rate": 0.8333333333333334,
+  "file": "unguided-t11-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t11",
+  "mode": "graph",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "复核者独立从原文提取": true,
+   "锚点是原始文献": true,
+   "不一致有裁决": true,
+   "有偏倚/异质性审计": false,
+   "写入论文前有人工门": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: discrepancy_check: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-VNOANCHOR: independent_recompute: verifier receives no anchor; it can only re-read the executor's view",
+   "E-CIRCULAR: independent_recompute and pooled_analysis both rely on ['final_extraction_table'] → mutual confirmation, not verification",
+   "E-GOODHART: discrepancy_check optimises 'extraction_agreement_rate' with no counter_metric_loop/audit_loop watching it",
+   "E-GOODHART: source_trace_audit optimises 'source_traceability_rate' with no counter_metric_loop/audit_loop watching it",
+   "E-GOODHART: independent_recompute optimises 'pooled_estimate_reproducibility' with no counter_metric_loop/audit_loop watching it",
+   "E-DEADEND: synthesis_package cannot reach a stop_handoff; its result has nowhere to go",
+   "E-DEADEND: write_manuscript cannot reach a stop_handoff; its result has nowhere to go"
+  ],
+  "diagnose_patterns": [
+   "circular_confirmation",
+   "watcher_theater",
+   "decorative_graph",
+   "metric_gaming",
+   "metric_gaming",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": false,
+  "structural_pass": false,
+  "semantic_rate": 0.8333333333333334,
+  "file": "unguided-t11-r3-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t12",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 direct/linear_workflow（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "unguided-t12-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t12",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 direct/linear_workflow（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "unguided-t12-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t12",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 direct/linear_workflow（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "unguided-t12-r3-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t13",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 loop/linear_workflow/direct（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "unguided-t13-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t13",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 loop/linear_workflow/direct（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "unguided-t13-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t13",
+  "mode": "linear_workflow",
+  "semantic": {
+   "mode 为 loop/linear_workflow/direct（不过度建图）": true
+  },
+  "structural": {
+   "不适用": true
+  },
+  "semantic_pass": true,
+  "structural_pass": true,
+  "semantic_rate": 1.0,
+  "file": "unguided-t13-r3-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t7",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有训练窗口之外的验证锚点": true,
+   "禁止用训练同月数据验收或自动替换": true,
+   "有校准/漂移/亚组反指标": true,
+   "替换线上模型须人工门": true,
+   "成功标准不只是 AUC 上涨": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-CONTRACT: anchor_eval_protocol: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-CONTRACT: anchor_prospective_outcomes: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: holdout_verification: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-TRAP: cycle ['bruce_deploy_gate', 'decision_arbiter', 'governance_review', 'holdout_verification', 'prospective_monitor', 'safety_counter_metrics', 'staged_deploy', 'stop_handoff_node', 'train_candidate'] has no exit edge"
+  ],
+  "diagnose_patterns": [
+   "decorative_graph",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t7-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t7",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有训练窗口之外的验证锚点": true,
+   "禁止用训练同月数据验收或自动替换": true,
+   "有校准/漂移/亚组反指标": true,
+   "替换线上模型须人工门": true,
+   "成功标准不只是 AUC 上涨": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-CONTRACT: anchor_holdout: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-CONTRACT: anchor_label_def: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: independent_eval: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing"
+  ],
+  "diagnose_patterns": [
+   "decorative_graph",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t7-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t7",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "有训练窗口之外的验证锚点": true,
+   "禁止用训练同月数据验收或自动替换": true,
+   "有校准/漂移/亚组反指标": true,
+   "替换线上模型须人工门": true,
+   "成功标准不只是 AUC 上涨": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-ANCHORWRITE: anchor_label_and_data -> anchor_holdout (feeds): only a human_gate may touch an anchor",
+   "E-VNOTEETH: holdout_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-GOODHART: holdout_verifier optimises 'holdout_auroc_delta' with no counter_metric_loop/audit_loop watching it",
+   "E-GOODHART: production_governance optimises 'post_deploy_live_auroc' with no counter_metric_loop/audit_loop watching it"
+  ],
+  "diagnose_patterns": [
+   "wrong_target",
+   "meta_loop_capture",
+   "decorative_graph",
+   "metric_gaming",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t7-r3-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t8",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "既有测试作为冻结锚点": true,
+   "禁止修复者删改/弱化既有测试": true,
+   "新增测试由独立方审查": true,
+   "合并主分支须人工门": true,
+   "修复者不能改裁判": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-CONTRACT: anchor_golden_outputs: contract.inputs and contract.outputs must be non-empty string lists",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: independent_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-GOODHART: test_integrity_audit optimises 'test_weakening_violations' with no counter_metric_loop/audit_loop watching it"
+  ],
+  "diagnose_patterns": [
+   "decorative_graph",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t8-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t8",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "既有测试作为冻结锚点": true,
+   "禁止修复者删改/弱化既有测试": true,
+   "新增测试由独立方审查": true,
+   "合并主分支须人工门": true,
+   "修复者不能改裁判": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: independent_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-GOODHART: counter_metric_guard optimises 'mutation_score' with no counter_metric_loop/audit_loop watching it"
+  ],
+  "diagnose_patterns": [
+   "decorative_graph",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t8-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t8",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "既有测试作为冻结锚点": true,
+   "禁止修复者删改/弱化既有测试": true,
+   "新增测试由独立方审查": true,
+   "合并主分支须人工门": true,
+   "修复者不能改裁判": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: independent_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-GOODHART: test_integrity_counter_metric optimises 'skipped_or_weakened_test_count' with no counter_metric_loop/audit_loop watching it",
+   "E-GOODHART: scientific_audit optimises 'reference_output_agreement' with no counter_metric_loop/audit_loop watching it"
+  ],
+  "diagnose_patterns": [
+   "decorative_graph",
+   "metric_gaming",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t8-r3-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t9",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "锚点包含真实结局": true,
+   "三年前标准需复审/时效检查": true,
+   "有防低估分级反指标": true,
+   "上线预检台须人工门": true,
+   "一致率不是唯一成功标准": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-VNOTEETH: holdout_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-SAMEOWNER: holdout_verifier shares an owner with ['prompt_optimizer', 'dataset_builder']; a maker cannot grade itself"
+  ],
+  "diagnose_patterns": [
+   "decayed_measurement",
+   "watcher_theater",
+   "decorative_graph",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t9-r1-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t9",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "锚点包含真实结局": true,
+   "三年前标准需复审/时效检查": true,
+   "有防低估分级反指标": true,
+   "上线预检台须人工门": true,
+   "一致率不是唯一成功标准": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-ANCHORWRITE: dataset_builder -> anchor_holdout (feeds): only a human_gate may touch an anchor",
+   "E-ANCHORWRITE: shadow_monitor -> anchor_gold_standard (observes): only a human_gate may touch an anchor",
+   "E-VNOTEETH: holdout_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-VNOTEETH: shadow_monitor: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-SAMEOWNER: holdout_verifier shares an owner with ['arbiter']; a maker cannot grade itself",
+   "E-GOODHART: holdout_verifier optimises 'holdout_generalization_gap' with no counter_metric_loop/audit_loop watching it"
+  ],
+  "diagnose_patterns": [
+   "decayed_measurement",
+   "meta_loop_capture",
+   "meta_loop_capture",
+   "watcher_theater",
+   "decorative_graph",
+   "decorative_graph",
+   "metric_gaming",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t9-r2-v0.2.json",
+  "condition": "unguided"
+ },
+ {
+  "task": "t9",
+  "mode": "graph_plus_loop",
+  "semantic": {
+   "判为 graph / graph_plus_loop": true,
+   "锚点包含真实结局": true,
+   "三年前标准需复审/时效检查": true,
+   "有防低估分级反指标": true,
+   "上线预检台须人工门": true,
+   "一致率不是唯一成功标准": true
+  },
+  "structural": {
+   "validate 无错误": false,
+   "diagnose 为 healthy": false
+  },
+  "validate_errors": [
+   "E-STATE: state must be one of ['awaiting_approval', 'blocked', 'budget_exhausted', 'completed', 'designed', 'executing', 'failed', 'ready']",
+   "E-FAIL: failure_policy is required",
+   "E-ANCHORWRITE: standard_governance -> anchor_reviewed_standard (observes): only a human_gate may touch an anchor",
+   "E-VNOANCHOR: holdout_verifier: verifier receives no anchor; it can only re-read the executor's view",
+   "E-VNOTEETH: holdout_verifier: verifier has no constrains/vetoes/escalates edge, so its verdict changes nothing",
+   "E-SAMEOWNER: holdout_verifier shares an owner with ['prompt_optimizer', 'data_curation']; a maker cannot grade itself"
+  ],
+  "diagnose_patterns": [
+   "decayed_measurement",
+   "meta_loop_capture",
+   "watcher_theater",
+   "watcher_theater",
+   "decorative_graph",
+   "local_success_global_harm"
+  ],
+  "semantic_pass": true,
+  "structural_pass": false,
+  "semantic_rate": 1.0,
+  "file": "unguided-t9-r3-v0.2.json",
+  "condition": "unguided"
+ }
+]

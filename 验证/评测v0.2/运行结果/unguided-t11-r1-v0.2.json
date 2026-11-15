@@ -1,0 +1,330 @@
+{
+  "schema_version": "1.1",
+  "title": "Meta-analysis extraction and pooling control architecture (40 studies)",
+  "mode": "graph_plus_loop",
+  "rationale": "The proposed flow is not a real review. Agent B reads Agent A's extraction table, so B's matching result only shows the pooling arithmetic can be reproduced. It does not check whether the effect sizes and sample sizes were extracted correctly, because both share the same input. That is circular verification: any extraction error (wrong arm, SD vs SE, wrong time point, double-counted sample, wrong effect direction) passes through both unchanged. The architecture therefore anchors verification on the 40 original PDFs and a frozen protocol/codebook. A blinded, independent second extraction runs as a reconciliation loop with source-page adjudication. Pooling is re-implemented independently from the locked table. A counter-metric loop stops 'A and B agree' from standing in for correctness. Bruce must approve both the locked table and the results before anything goes into the paper. Several parallel branches plus bounded loops make this graph_plus_loop.",
+  "state": "proposed",
+  "root_goal": {
+    "statement": "Produce pooled meta-analysis results in which every effect size and sample size used can be traced to a specific page/table/figure of its source study and has been checked independently against that source, with the pooled analysis reproduced independently under a pre-registered analysis plan before being written into the manuscript.",
+    "human_owner": "Bruce",
+    "observable_success": "(1) Locked extraction table: every row for all 40 studies has a source locator (page/table/figure) and status double-extracted+reconciled; inter-extractor discrepancies resolved against the source with a logged decision. (2) Audit sample of at least 20% of rows (plus all rows involving conversions or imputations) matches the source with 0 unresolved errors. (3) Independent re-implementation of the pooled estimate, CI, tau^2/I^2 matches within a pre-specified tolerance (e.g., |diff| < 0.005 on the effect scale). (4) Bruce has signed the locked table and the results before the manuscript is updated.",
+    "metrics": [
+      "source_traceability_rate",
+      "independent_extraction_agreement_rate",
+      "audit_error_rate",
+      "pooled_estimate_reproduction_diff",
+      "unresolved_discrepancy_count"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "read the 40 source full texts and supplements",
+      "write extraction tables in the project workspace",
+      "run statistical analyses on locked tables",
+      "write draft results text and tables to a staging draft",
+      "log discrepancies and adjudication decisions"
+    ],
+    "forbidden_actions": [
+      "modify the frozen protocol, codebook, or analysis plan without Bruce's approval",
+      "let the second extractor or auditor see Agent A's extraction table before submitting its own",
+      "impute, convert, or estimate missing statistics with a method not listed in the codebook",
+      "drop or add studies after the inclusion list is frozen",
+      "write results into the manuscript before Bruce approves at the human gate",
+      "treat agreement between two analyses run on the same unverified table as verification",
+      "submit the manuscript or contact study authors without Bruce's approval"
+    ]
+  },
+  "frozen_rules": [
+    "The 40 original full texts (plus supplements) are the only ground truth for extracted values; agent output is never ground truth.",
+    "Verification of extraction must read the source PDFs, not the extraction table under review.",
+    "The second extraction is blinded to Agent A's table and runs in a fresh, independent context.",
+    "Every extracted value carries a source locator (page, table/figure, row/arm, time point).",
+    "Effect measure, direction convention, preferred time point, arm selection, SD/SE/CI conversion formulas, and handling of multi-arm/cluster/crossover designs follow the frozen codebook.",
+    "The analysis model (fixed/random, estimator, CI method, heterogeneity statistics, prespecified sensitivity analyses) follows the frozen analysis plan; changes need Bruce's approval and are reported as deviations.",
+    "Matching pooled results from two runs on the same table are evidence of computational reproducibility only, never of extraction correctness.",
+    "Nothing goes into the manuscript until Bruce passes the human gate."
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 7,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 100
+  },
+  "failure_policy": "If a loop hits max_iterations with unresolved discrepancies, if the audit error rate exceeds 5% of sampled rows (or there is any error in the primary outcome), if a source is unreadable or ambiguous, or if the independent pooled re-run disagrees beyond tolerance: stop forward flow, freeze the current artifacts, and escalate to Bruce with a discrepancy log. Do not silently pick a value, and do not loosen tolerances.",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "reconciliation loop exhausts max_iterations with unresolved_discrepancy_count > 0",
+      "audit finds an error rate > 5% or any error affecting the primary outcome",
+      "a value requires an imputation/conversion not in the frozen codebook",
+      "independent pooling re-implementation differs beyond pre-specified tolerance",
+      "a protocol, codebook, or inclusion-list change is proposed",
+      "budget (agents, retries, cost units) is exhausted",
+      "human gate rejects the locked table or results"
+    ],
+    "artifact": "handoff-package: current extraction tables A and C, discrepancy and adjudication log with source locators, audit report, both analysis outputs with code and versions, list of open questions for Bruce"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_sources",
+      "source": "The 40 included studies' original full-text PDFs and supplementary materials, checksum-recorded at freeze",
+      "evidence_form": "page/table/figure locators plus quoted numeric values from the source documents",
+      "owner": "Bruce",
+      "freshness_rule": "Fixed at inclusion-list freeze; re-confirm only if a study publishes an erratum, correction, or retraction",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_protocol",
+      "source": "Pre-registered protocol (e.g., PROSPERO), frozen extraction codebook, and frozen statistical analysis plan",
+      "evidence_form": "versioned, checksum-recorded protocol, codebook, and analysis-plan documents",
+      "owner": "Bruce",
+      "freshness_rule": "Changes only with Bruce's approval, logged as protocol deviations",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "40 source full texts and supplements",
+    "frozen protocol, extraction codebook and analysis plan",
+    "frozen inclusion list"
+  ],
+  "nodes": [
+    {
+      "id": "anchor_sources",
+      "kind": "anchor",
+      "responsibility": "Hold the checksum-locked source PDFs as the only ground truth for extracted values.",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["40 source full texts and supplements", "frozen inclusion list"],
+        "outputs": ["source_documents"]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_protocol",
+      "kind": "anchor",
+      "responsibility": "Hold the frozen protocol, extraction codebook (effect measure, direction, time point, arm selection, conversion formulas, special designs) and analysis plan.",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["frozen protocol, extraction codebook and analysis plan"],
+        "outputs": ["codebook", "analysis_plan"]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "extract_A",
+      "kind": "execution",
+      "responsibility": "Agent A extracts effect-size inputs (means/SD/n, events/n, or reported effect plus CI) and sample sizes for all 40 studies following the codebook, with a source locator and conversion note on every value.",
+      "owner": "Agent A",
+      "contract": {
+        "inputs": ["source_documents", "codebook"],
+        "outputs": ["extraction_table_A"]
+      },
+      "evidence_sources": ["source_documents", "codebook"],
+      "side_effect": "internal-reversible",
+      "writes": ["extraction_table_A"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "extract_C_blind",
+      "kind": "execution",
+      "responsibility": "Blinded second extractor independently extracts the same fields from the source PDFs without access to extraction_table_A.",
+      "owner": "Agent C (independent extractor)",
+      "contract": {
+        "inputs": ["source_documents", "codebook"],
+        "outputs": ["extraction_table_C"]
+      },
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_documents", "codebook"],
+      "side_effect": "internal-reversible",
+      "writes": ["extraction_table_C"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "reconcile_loop",
+      "kind": "verification_loop",
+      "responsibility": "Field-level comparison of tables A and C. Each discrepancy goes back to the source page for adjudication, and the loop runs until no discrepancies are left or the cap is hit. Only this node writes the reconciled table.",
+      "owner": "Agent R (reconciler)",
+      "contract": {
+        "inputs": ["extraction_table_A", "extraction_table_C", "source_documents", "codebook", "adjudication_decisions"],
+        "outputs": ["reconciled_table_draft", "discrepancy_log"]
+      },
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_documents", "extraction_table_A", "extraction_table_C"],
+      "optimizes": "independent_extraction_agreement_rate",
+      "side_effect": "internal-reversible",
+      "writes": ["reconciled_table_draft", "discrepancy_log"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "adjudicate",
+      "kind": "arbitration",
+      "responsibility": "Resolve discrepancies that persist after one reconciliation pass by reading the source. Unresolvable ambiguities (unclear arm, inconsistent numbers within a paper, needed imputation outside the codebook) are escalated to Bruce.",
+      "owner": "Agent J (adjudicator)",
+      "contract": {
+        "inputs": ["discrepancy_log", "source_documents", "codebook"],
+        "outputs": ["adjudication_decisions", "escalation_items"]
+      },
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_documents", "codebook"],
+      "priority_policy": "source text > codebook rule > escalate to Bruce; never majority vote among agents",
+      "side_effect": "none",
+      "writes": ["adjudication_decisions"]
+    },
+    {
+      "id": "agreement_counter_metric",
+      "kind": "counter_metric_loop",
+      "responsibility": "Guard against Goodhart on agreement. Check source_traceability_rate, flag rows where A and C agree but share a risky step (SE->SD conversion, figure digitisation, multi-arm splitting, cluster adjustment, reused control groups, overlapping cohorts or duplicate publications, effect direction), and send those rows to the audit.",
+      "owner": "Agent K (counter-metric checker)",
+      "contract": {
+        "inputs": ["reconciled_table_draft", "codebook", "source_documents"],
+        "outputs": ["high_risk_rows", "traceability_report"]
+      },
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_documents", "codebook"],
+      "optimizes": "source_traceability_rate",
+      "side_effect": "none",
+      "writes": ["traceability_report"]
+    },
+    {
+      "id": "source_audit",
+      "kind": "audit_loop",
+      "responsibility": "Fresh auditor re-checks a random sample of at least 20% of rows plus all high-risk rows against the source PDFs and reports audit_error_rate. If errors exceed the threshold, return to reconciliation; if errors persist, stop.",
+      "owner": "Agent U (auditor)",
+      "contract": {
+        "inputs": ["reconciled_table_draft", "high_risk_rows", "source_documents", "codebook"],
+        "outputs": ["audit_report"]
+      },
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_documents", "codebook"],
+      "optimizes": "audit_error_rate",
+      "side_effect": "none",
+      "writes": ["audit_report"]
+    },
+    {
+      "id": "gate_table_lock",
+      "kind": "human_gate",
+      "responsibility": "Bruce reviews the discrepancy/adjudication log, audit report and escalations, then approves locking the extraction table, which is checksum-recorded.",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["reconciled_table_draft", "discrepancy_log", "audit_report", "traceability_report", "escalation_items"],
+        "outputs": ["locked_extraction_table"]
+      },
+      "side_effect": "internal-reversible",
+      "writes": ["locked_extraction_table"],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "pool_B",
+      "kind": "execution",
+      "responsibility": "Agent B runs the pre-specified pooled analysis (primary model, heterogeneity, prespecified subgroup/sensitivity, small-study checks) on the locked table, with scripted, versioned code.",
+      "owner": "Agent B",
+      "contract": {
+        "inputs": ["locked_extraction_table", "analysis_plan"],
+        "outputs": ["analysis_results_B", "analysis_code_B"]
+      },
+      "evidence_sources": ["locked_extraction_table", "analysis_plan"],
+      "side_effect": "internal-reversible",
+      "writes": ["analysis_results_B", "analysis_code_B"]
+    },
+    {
+      "id": "pool_reimplement",
+      "kind": "verification_loop",
+      "responsibility": "Independent re-implementation, written from the analysis plan without seeing B's code and in a different package where possible (e.g., R metafor vs Python/Stata). It compares estimates, CIs, tau^2, I^2 and prespecified sensitivity results against tolerance. This checks computation only, not extraction.",
+      "owner": "Agent V (analysis verifier)",
+      "contract": {
+        "inputs": ["locked_extraction_table", "analysis_plan", "analysis_results_B"],
+        "outputs": ["reproduction_report"]
+      },
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["locked_extraction_table", "analysis_plan"],
+      "optimizes": "pooled_estimate_reproduction_diff",
+      "side_effect": "none",
+      "writes": ["reproduction_report"]
+    },
+    {
+      "id": "gate_results",
+      "kind": "human_gate",
+      "responsibility": "Bruce approves the results and checks for model choices that deviate from the plan before anything enters the manuscript.",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["analysis_results_B", "reproduction_report", "locked_extraction_table", "audit_report"],
+        "outputs": ["approved_results"]
+      },
+      "side_effect": "internal-reversible",
+      "writes": ["approved_results"],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "write_manuscript",
+      "kind": "synthesis",
+      "responsibility": "Write approved results into the manuscript draft (methods: double independent extraction, adjudication, audit; results tables, forest plots), with the locked table and code archived as supplementary material.",
+      "owner": "Agent W (writer)",
+      "contract": {
+        "inputs": ["approved_results", "locked_extraction_table", "discrepancy_log", "audit_report"],
+        "outputs": ["manuscript_results_draft"]
+      },
+      "side_effect": "internal-reversible",
+      "writes": ["manuscript_results_draft"]
+    },
+    {
+      "id": "stop_to_bruce",
+      "kind": "stop_handoff",
+      "responsibility": "On any stop condition, freeze artifacts and hand the package to Bruce.",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["discrepancy_log", "escalation_items", "audit_report", "reproduction_report"],
+        "outputs": ["handoff-package"]
+      },
+      "side_effect": "none",
+      "writes": ["handoff-package"]
+    }
+  ],
+  "edges": [
+    {"from": "anchor_sources", "to": "extract_A", "relation": "anchors", "artifact": "source_documents"},
+    {"from": "anchor_protocol", "to": "extract_A", "relation": "constrains", "artifact": "codebook"},
+    {"from": "anchor_sources", "to": "extract_C_blind", "relation": "anchors", "artifact": "source_documents"},
+    {"from": "anchor_protocol", "to": "extract_C_blind", "relation": "constrains", "artifact": "codebook"},
+    {"from": "extract_A", "to": "reconcile_loop", "relation": "feeds", "artifact": "extraction_table_A"},
+    {"from": "extract_C_blind", "to": "reconcile_loop", "relation": "feeds", "artifact": "extraction_table_C"},
+    {"from": "anchor_sources", "to": "reconcile_loop", "relation": "anchors", "artifact": "source_documents"},
+    {"from": "reconcile_loop", "to": "adjudicate", "relation": "escalates", "artifact": "discrepancy_log"},
+    {"from": "anchor_sources", "to": "adjudicate", "relation": "anchors", "artifact": "source_documents"},
+    {"from": "adjudicate", "to": "reconcile_loop", "relation": "revises", "artifact": "adjudication_decisions"},
+    {"from": "adjudicate", "to": "stop_to_bruce", "relation": "escalates", "artifact": "escalation_items"},
+    {"from": "reconcile_loop", "to": "agreement_counter_metric", "relation": "feeds", "artifact": "reconciled_table_draft"},
+    {"from": "anchor_sources", "to": "agreement_counter_metric", "relation": "anchors", "artifact": "source_documents"},
+    {"from": "agreement_counter_metric", "to": "source_audit", "relation": "feeds", "artifact": "high_risk_rows"},
+    {"from": "reconcile_loop", "to": "source_audit", "relation": "feeds", "artifact": "reconciled_table_draft"},
+    {"from": "anchor_sources", "to": "source_audit", "relation": "anchors", "artifact": "source_documents"},
+    {"from": "source_audit", "to": "reconcile_loop", "relation": "revises", "artifact": "audit_report"},
+    {"from": "source_audit", "to": "gate_table_lock", "relation": "verifies", "artifact": "audit_report"},
+    {"from": "agreement_counter_metric", "to": "gate_table_lock", "relation": "verifies", "artifact": "traceability_report"},
+    {"from": "reconcile_loop", "to": "gate_table_lock", "relation": "feeds", "artifact": "reconciled_table_draft"},
+    {"from": "source_audit", "to": "stop_to_bruce", "relation": "escalates", "artifact": "audit_report"},
+    {"from": "gate_table_lock", "to": "pool_B", "relation": "feeds", "artifact": "locked_extraction_table"},
+    {"from": "anchor_protocol", "to": "pool_B", "relation": "constrains", "artifact": "analysis_plan"},
+    {"from": "gate_table_lock", "to": "pool_reimplement", "relation": "feeds", "artifact": "locked_extraction_table"},
+    {"from": "anchor_protocol", "to": "pool_reimplement", "relation": "constrains", "artifact": "analysis_plan"},
+    {"from": "pool_B", "to": "pool_reimplement", "relation": "feeds", "artifact": "analysis_results_B"},
+    {"from": "pool_reimplement", "to": "gate_results", "relation": "verifies", "artifact": "reproduction_report"},
+    {"from": "pool_B", "to": "gate_results", "relation": "feeds", "artifact": "analysis_results_B"},
+    {"from": "pool_reimplement", "to": "stop_to_bruce", "relation": "escalates", "artifact": "reproduction_report"},
+    {"from": "gate_results", "to": "write_manuscript", "relation": "feeds", "artifact": "approved_results"},
+    {"from": "gate_results", "to": "write_manuscript", "relation": "vetoes", "artifact": "approved_results"}
+  ]
+}

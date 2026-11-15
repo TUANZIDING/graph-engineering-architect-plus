@@ -1,0 +1,486 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊胸痛分诊助手提示词优化控制图",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "让急诊预检台胸痛分诊助手对时间敏感高危胸痛（STEMI/NSTE-ACS、主动脉夹层、肺栓塞、张力性气胸等）不漏分、不低分，并在护士最终决策下安全辅助分级；与三年前科室标准的一致率只是代理指标，不是根结果",
+    "human_owner": "Bruce",
+    "observable_success": "在优化者不可见、按出院诊断与30天MACE双人盲法裁定的封存胸痛病例集上：高危病例低分诊率≤预设上限（由Bruce与胸痛中心共同签字设定）、关键亚组（女性、≥75岁、糖尿病、非典型症状）无显著劣化；经复审后的标准一致率不低于基线；随后影子模式（不影响真实分诊）前瞻运行期内无新增低分诊安全事件，并经伦理/医务部门签字",
+    "out_of_scope": [
+      "助手自主决定分诊级别或替代预检护士判断",
+      "未经复审直接把三年前的标准当作不可质疑的真值",
+      "修改科室分诊标准、封存病例集或安全阈值",
+      "诊断、治疗或处置建议",
+      "未经批准在真实预检台上线"
+    ],
+    "metrics": [
+      "agreement_with_reviewed_standard",
+      "high_risk_undertriage_rate",
+      "subgroup_undertriage_gap",
+      "overtriage_rate"
+    ]
+  },
+  "classification_rationale": "单回路只会把‘与旧标准一致率’刷高：旧标准可能已过时（指南与高敏肌钙蛋白路径更新），一致率可通过迎合标准措辞、过度保守或在开发集过拟合被钻空子，且临床部署是高风险副作用。需要：独立于优化者的结局锚点验证、低分诊/亚组反指标、对标准本身与数据漂移的审计、安全优先的仲裁、标准修订与上线的人工门，故为图；提示词改写本身是图内一个有界单回路，故 graph_plus_loop。",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "在开发集上改写分诊助手提示词候选",
+      "在隔离沙箱运行候选并记录日志",
+      "提议标准修订、阈值修订或目标修订（仅提议）",
+      "生成验证、反指标、审计与交接报告"
+    ],
+    "forbidden_actions": [
+      "读取或修改封存结局病例集及其标签",
+      "修改科室分诊标准文本或复审结论",
+      "修改验证脚本、反指标阈值或仲裁优先级",
+      "在真实预检台部署或影响真实患者分级",
+      "将患者可识别信息带出院内环境"
+    ]
+  },
+  "frozen_rules": [
+    "封存结局病例集（出院诊断+30天MACE，双人盲法裁定）只读，优化回路不可见其标签",
+    "高危胸痛低分诊率上限与亚组劣化阈值由Bruce签字设定，优化者不可改",
+    "安全优先：低分诊高危病例的代价高于任何一致率提升",
+    "科室标准的任何修订须经胸痛中心/心内与急诊专家复审并由Bruce批准",
+    "助手只作辅助，预检护士保留最终分级权",
+    "上线前必须经伦理/医务批准并完成影子模式运行"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "failed": "候选被验证或反指标否决且达到迭代上限：保留当前最佳已通过版本（或无版本），写交接报告给Bruce",
+    "blocked": "标准复审未完成、封存集不可用或锚点过期：停止优化，升级给Bruce",
+    "budget_exhausted": "停止迭代，提交最佳已验证候选及未解决风险清单，不得上线"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: 候选通过封存集验证与反指标、影子模式无安全事件并经人工门签字",
+      "failed: 达到迭代上限仍无候选满足低分诊阈值",
+      "blocked: 标准复审未通过/锚点过期/伦理未批准",
+      "budget_exhausted: 预算用尽"
+    ],
+    "artifact": "handoff.md"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "1 高危胸痛不低分诊（患者安全）> 2 关键亚组无劣化 > 3 与结局裁定一致 > 4 与复审后标准一致率 > 5 过度分诊/资源效率；标准与结局冲突时以结局为准并升级至标准复审"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "科室标准修订",
+      "安全阈值修订",
+      "预检台上线"
+    ]
+  },
+  "verification": {
+    "independence_statement": "验证与反指标回路由不参与改写的确定性评测脚本执行，读取的是优化者看不到的封存结局病例集（数据来源为病历出院诊断与随访，由两名不参与优化的医师盲法裁定），而非优化者使用的开发集或旧标准标签；评估者与数据来源均独立于执行回路",
+    "checks": [
+      "V1",
+      "C1"
+    ]
+  },
+  "external_inputs": [
+    "三年前科室胸痛分诊标准原文",
+    "现行胸痛诊疗指南",
+    "去标识化历史胸痛病例开发集",
+    "电子病历出院诊断与30天随访记录"
+  ],
+  "anchors": [
+    {
+      "node_id": "A1",
+      "source": "院内电子病历：胸痛就诊病例的出院诊断、肌钙蛋白/影像结果与30天MACE随访，双人盲法裁定的应有分级",
+      "evidence_form": "封存只读病例集+裁定表（含哈希）",
+      "owner": "Bruce",
+      "freshness_rule": "每6个月补入新近病例并复核裁定；超过期限或病例构成漂移时视为过期，停止验证",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "G0",
+      "kind": "human_gate",
+      "owner": "Bruce",
+      "responsibility": "使用前复审三年前的标准：对照现行指南与近年病例，由急诊与心内/胸痛中心专家确认或修订，产出带版本号的复审标准；未复审不得启动优化",
+      "cadence": "按需（启动前及治理提议时）",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "三年前科室胸痛分诊标准原文",
+          "现行胸痛诊疗指南",
+          "standard_change_proposal"
+        ],
+        "outputs": [
+          "reviewed_standard"
+        ]
+      },
+      "side_effect": "internal-reversible",
+      "writes": [
+        "reviewed_standard"
+      ]
+    },
+    {
+      "id": "A1",
+      "kind": "anchor",
+      "owner": "Bruce",
+      "responsibility": "冻结的现实锚点：电子病历出院诊断、肌钙蛋白/影像与30天MACE随访，经两名不参与优化的医师盲法裁定应有分级的封存胸痛病例集（只读、带哈希）",
+      "cadence": "每6个月更新",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "电子病历出院诊断与30天随访记录"
+        ],
+        "outputs": [
+          "sealed_outcome_cases"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "sealed_outcome_cases"
+      ]
+    },
+    {
+      "id": "E1",
+      "kind": "execution_loop",
+      "owner": "提示词优化Agent",
+      "responsibility": "在开发集上按复审标准标签迭代改写分诊助手提示词，提交候选",
+      "cadence": "每次迭代",
+      "cadence_tier": "fast",
+      "max_iterations": 20,
+      "optimizes": "agreement_with_reviewed_standard",
+      "evidence_sources": [
+        "dev_set",
+        "reviewed_standard"
+      ],
+      "contract": {
+        "inputs": [
+          "reviewed_standard",
+          "去标识化历史胸痛病例开发集",
+          "search_bounds"
+        ],
+        "outputs": [
+          "prompt_candidate",
+          "iteration_log"
+        ]
+      },
+      "side_effect": "internal-reversible",
+      "writes": [
+        "prompt_candidates"
+      ]
+    },
+    {
+      "id": "V1",
+      "kind": "verification_loop",
+      "owner": "确定性评测脚本（Bruce维护）",
+      "responsibility": "在封存结局病例集上运行候选，计算高危低分诊率、与结局裁定一致率、与复审标准一致率；不达阈值即否决",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "A1"
+      ],
+      "contract": {
+        "inputs": [
+          "prompt_candidate",
+          "sealed_outcome_cases",
+          "audit_constraints"
+        ],
+        "outputs": [
+          "verification_verdict"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "verification_reports"
+      ]
+    },
+    {
+      "id": "C1",
+      "kind": "counter_metric_loop",
+      "owner": "安全反指标脚本+急诊医师抽检",
+      "responsibility": "拆穿刷一致率的便宜胜利：亚组低分诊差异、非典型表现、生命体征缺失/改写措辞扰动下的稳健性、过度分诊率、输出格式规避",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "A1",
+        "perturbation_set"
+      ],
+      "contract": {
+        "inputs": [
+          "prompt_candidate",
+          "sealed_outcome_cases"
+        ],
+        "outputs": [
+          "counter_metric_verdict"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "counter_metric_reports"
+      ]
+    },
+    {
+      "id": "AU1",
+      "kind": "audit_loop",
+      "owner": "质控医师（不参与优化）",
+      "responsibility": "每月审计：开发集与封存集是否泄漏、病例构成漂移、标准与结局冲突病例、迭代日志中的过拟合与刷分迹象；必要时收紧验证约束或升级治理",
+      "cadence": "每月",
+      "cadence_tier": "slow",
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "A1",
+        "emr_raw_records"
+      ],
+      "contract": {
+        "inputs": [
+          "iteration_log",
+          "verification_verdict",
+          "sealed_outcome_cases"
+        ],
+        "outputs": [
+          "audit_constraints",
+          "audit_escalation"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "audit_reports"
+      ]
+    },
+    {
+      "id": "AR1",
+      "kind": "arbitration",
+      "owner": "Bruce",
+      "responsibility": "合并验证与反指标结论，按安全优先策略裁决候选是否可进入上线评审",
+      "cadence": "每个通过候选",
+      "cadence_tier": "human",
+      "priority_policy": "高危不低分诊 > 亚组无劣化 > 结局一致 > 标准一致率 > 过度分诊/效率",
+      "contract": {
+        "inputs": [
+          "verification_verdict",
+          "counter_metric_verdict"
+        ],
+        "outputs": [
+          "arbitrated_decision"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "arbitration_log"
+      ]
+    },
+    {
+      "id": "GV1",
+      "kind": "governance_loop",
+      "owner": "Bruce",
+      "responsibility": "每季度审视目标是否仍正确、阈值是否合适、标准是否需修订；只能提议，修订经G0人工门",
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "max_iterations": 4,
+      "contract": {
+        "inputs": [
+          "audit_escalation"
+        ],
+        "outputs": [
+          "standard_change_proposal",
+          "search_bounds"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "governance_proposals"
+      ]
+    },
+    {
+      "id": "H1",
+      "kind": "human_gate",
+      "owner": "Bruce",
+      "responsibility": "上线门：伦理/医务批准后先在预检台影子模式运行（不影响护士决策），复核安全事件后才可作为辅助工具启用",
+      "cadence": "按需",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "arbitrated_decision",
+          "verification_verdict",
+          "counter_metric_verdict"
+        ],
+        "outputs": [
+          "deployment_decision"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "deployment_record"
+      ]
+    },
+    {
+      "id": "S1",
+      "kind": "stop_handoff",
+      "owner": "Bruce",
+      "responsibility": "按 completed/failed/blocked/budget_exhausted 终态写交接：最佳版本、证据、未解决风险",
+      "cadence": "终止时",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "deployment_decision"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "handoff.md"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "G0",
+      "to": "E1",
+      "relation": "feeds",
+      "artifact": "reviewed_standard"
+    },
+    {
+      "from": "A1",
+      "to": "V1",
+      "relation": "anchors",
+      "artifact": "sealed_outcome_cases"
+    },
+    {
+      "from": "A1",
+      "to": "C1",
+      "relation": "anchors",
+      "artifact": "sealed_outcome_cases"
+    },
+    {
+      "from": "A1",
+      "to": "AU1",
+      "relation": "anchors",
+      "artifact": "sealed_outcome_cases"
+    },
+    {
+      "from": "E1",
+      "to": "V1",
+      "relation": "feeds",
+      "artifact": "prompt_candidate"
+    },
+    {
+      "from": "E1",
+      "to": "C1",
+      "relation": "feeds",
+      "artifact": "prompt_candidate"
+    },
+    {
+      "from": "V1",
+      "to": "E1",
+      "relation": "observes",
+      "artifact": "verification_verdict（仅聚合分数，不含封存标签）"
+    },
+    {
+      "from": "V1",
+      "to": "AR1",
+      "relation": "verifies",
+      "artifact": "verification_verdict"
+    },
+    {
+      "from": "C1",
+      "to": "AR1",
+      "relation": "verifies",
+      "artifact": "counter_metric_verdict"
+    },
+    {
+      "from": "V1",
+      "to": "H1",
+      "relation": "vetoes",
+      "artifact": "verification_verdict"
+    },
+    {
+      "from": "C1",
+      "to": "H1",
+      "relation": "vetoes",
+      "artifact": "counter_metric_verdict"
+    },
+    {
+      "from": "E1",
+      "to": "AU1",
+      "relation": "feeds",
+      "artifact": "iteration_log"
+    },
+    {
+      "from": "V1",
+      "to": "AU1",
+      "relation": "feeds",
+      "artifact": "verification_verdict"
+    },
+    {
+      "from": "AU1",
+      "to": "V1",
+      "relation": "constrains",
+      "artifact": "audit_constraints"
+    },
+    {
+      "from": "AU1",
+      "to": "GV1",
+      "relation": "escalates",
+      "artifact": "audit_escalation"
+    },
+    {
+      "from": "GV1",
+      "to": "E1",
+      "relation": "revises",
+      "artifact": "search_bounds"
+    },
+    {
+      "from": "GV1",
+      "to": "G0",
+      "relation": "escalates",
+      "artifact": "standard_change_proposal"
+    },
+    {
+      "from": "AR1",
+      "to": "H1",
+      "relation": "arbitrates",
+      "artifact": "arbitrated_decision"
+    },
+    {
+      "from": "H1",
+      "to": "S1",
+      "relation": "hands_off",
+      "artifact": "deployment_decision"
+    },
+    {
+      "from": "H1",
+      "to": "E1",
+      "relation": "constrains",
+      "artifact": "deployment_decision（冻结候选版本与禁止上线约束）"
+    },
+    {
+      "from": "G0",
+      "to": "H1",
+      "relation": "constrains",
+      "artifact": "reviewed_standard 版本号（上线版本必须对应已复审标准）"
+    }
+  ]
+}

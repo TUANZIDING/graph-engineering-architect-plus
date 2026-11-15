@@ -1,0 +1,304 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊胸痛分诊助手提示词优化系统（金标准复核 + 结局反指标 + 人工上线闸门）",
+  "mode": "graph_plus_loop",
+  "rationale": "核心是一个'改写提示词→评测一致率'的优化环（loop），但不能只做 loop：(1) 金标准是三年前的科室标准，可能已落后于现行指南（如 2021 AHA/ACC 胸痛指南、2023 ESC ACS 指南、主动脉夹层/肺栓塞识别要点），把它当唯一真值会把过时规则固化进助手，需要先有锚点复核节点；(2) 只优化'与标准一致率'是典型 Goodhart：可通过向多数类收敛、过拟合标注集来刷分，必须配对'漏分级（under-triage）率'与真实临床结局（ACS/夹层/PE/30天MACE）作为反指标，且两者不对称——漏分级权重远高于过分级；(3) 评测集需冻结留出集、由独立上下文的验证者评分，防止改写者自评；(4) 用在急诊预检台属于高风险临床部署，助手只能作为辅助建议，上线必须经科室/医务部/伦理人工闸门、影子模式试运行与持续监测。多角色、多证据源、多闸门并存，故为 graph_plus_loop。状态为待审批，未实际执行。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在保证胸痛高危患者不被低分级的前提下，迭代优化急诊预检分诊助手提示词，使其分级与经复核后的科室胸痛分诊标准高度一致，并以辅助建议形式经人工批准后在预检台影子运行、再逐步启用。",
+    "human_owner": "Bruce",
+    "observable_success": "在冻结的独立留出集上：高危类（I/II级）漏分级率≤预设阈值（如≤1%，且主动脉夹层/STEMI/PE 零漏判），加权一致率（Cohen's kappa，漏分级加重罚）显著高于基线；在影子模式下与护士实际分级及30天结局比对无新增安全信号；科室质控与医务部书面批准上线。",
+    "metrics": [
+      "weighted_agreement_kappa",
+      "high_risk_under_triage_rate",
+      "outcome_linked_sensitivity",
+      "over_triage_rate",
+      "holdout_generalization_gap"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取经脱敏的历史胸痛分诊病例与结局数据",
+      "在沙箱中生成与修改分诊助手提示词版本",
+      "在开发集上运行助手并计算指标",
+      "生成金标准与现行指南的差异清单供人工裁定",
+      "撰写评测报告与上线申请材料草稿"
+    ],
+    "forbidden_actions": [
+      "修改或删减金标准文本及其人工裁定结果",
+      "读取或使用冻结留出集的标签来改写提示词",
+      "让助手直接决定或覆盖护士的最终分级",
+      "未经人工批准在真实预检台启用助手",
+      "使用未脱敏的患者身份信息",
+      "为提高一致率而降低高危类判定敏感度"
+    ]
+  },
+  "frozen_rules": [
+    "高危胸痛（疑似 STEMI/ACS、主动脉夹层、肺栓塞、张力性气胸、心包填塞）任何情况下不得被分到低于标准的级别；漏分级一票否决该提示词版本。",
+    "金标准只能由人类专家（Bruce 及科室质控小组）修订；Agent 只能提出差异建议。",
+    "留出集在优化开始前一次性冻结，只由独立验证者在候选版本定稿时评估，每个版本最多评估一次。",
+    "助手输出只作辅助建议，最终分级由预检护士/医生决定并留痕。",
+    "任何上线、扩大使用范围必须经过人工闸门并有书面批准记录。",
+    "优化目标为漏分级加重罚的加权一致率，不得单独以原始一致率作为接受标准。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 9,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": "任一高危类漏分级、留出集与开发集差距超阈值、反指标恶化、验证者与改写者证据来源重叠、金标准复核未通过或预算耗尽时，立即停止优化环，保留最佳已验证版本，并交由 Bruce 裁定；不得自动回退到放宽安全约束的版本。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "金标准与现行指南存在未裁定的冲突",
+      "任一候选版本出现高危类漏分级",
+      "连续3轮加权一致率提升<0.5%（平台期）",
+      "留出集泛化差距>5个百分点（过拟合）",
+      "优化环达到 max_iterations",
+      "预算耗尽",
+      "影子模式出现安全信号"
+    ],
+    "artifact": "停止交接包：最佳版本提示词、全部版本差异、开发集/留出集指标、漏分级病例逐例清单、金标准差异裁定记录、建议下一步"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_gold_standard",
+      "source": "科室胸痛分诊标准（约三年前制定）及 Bruce/质控小组对其与现行指南差异的书面裁定版本",
+      "evidence_form": "带版本号的标准文本 + 差异裁定记录（签字/日期）",
+      "owner": "Bruce",
+      "freshness_rule": "超过 max_age_days 未复核，或国家/国际胸痛相关指南更新时，必须先经 standard_review 复核再用于评测",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2023-11-15"
+    },
+    {
+      "node_id": "anchor_outcomes",
+      "source": "医院 HIS/胸痛中心数据库中的最终诊断与30天结局（ACS、夹层、PE、MACE、死亡）",
+      "evidence_form": "脱敏病例级结局表，独立于金标准标签",
+      "owner": "Bruce",
+      "freshness_rule": "每次评测前确认数据截止日期；结局随访不足30天的病例不入集",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_holdout",
+      "source": "优化开始前按时间切分并冻结的留出病例集（含金标准标签与结局）",
+      "evidence_form": "哈希校验的数据文件",
+      "owner": "Bruce",
+      "freshness_rule": "优化期间不可更改；每次部署周期后重新抽取新留出集",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "科室胸痛分诊标准原文",
+    "现行胸痛/ACS/主动脉夹层/肺栓塞诊治指南",
+    "脱敏历史胸痛分诊病例",
+    "病例结局数据"
+  ],
+  "nodes": [
+    {
+      "id": "anchor_gold_standard",
+      "kind": "anchor",
+      "responsibility": "提供经复核的金标准分级规则与标签作为一致率参照",
+      "owner": "Bruce",
+      "contract": {"inputs": ["科室胸痛分诊标准原文", "standard_review_decision"], "outputs": ["gold_standard_vN"]},
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供独立于金标准的真实临床结局，用于反指标",
+      "owner": "Bruce",
+      "contract": {"inputs": ["病例结局数据"], "outputs": ["outcome_labels"]},
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_holdout",
+      "kind": "anchor",
+      "responsibility": "保管冻结的时间外留出集，只供独立验证者使用",
+      "owner": "Bruce",
+      "contract": {"inputs": ["脱敏历史胸痛分诊病例", "gold_standard_vN", "outcome_labels"], "outputs": ["holdout_set_hashed"]},
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "standard_review",
+      "kind": "governance_loop",
+      "responsibility": "将三年前标准与现行指南逐条比对，并用历史结局检验其高危识别敏感度，产出差异清单交 Bruce 裁定；未裁定前不得启动优化环",
+      "owner": "Bruce",
+      "contract": {"inputs": ["科室胸痛分诊标准原文", "现行胸痛/ACS/主动脉夹层/肺栓塞诊治指南", "outcome_labels"], "outputs": ["standard_gap_list", "standard_review_decision"]},
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["guidelines", "outcomes", "original_standard"],
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "gate_standard",
+      "kind": "human_gate",
+      "responsibility": "Bruce/科室质控小组裁定金标准差异，签发可用作评测参照的标准版本",
+      "owner": "Bruce",
+      "contract": {"inputs": ["standard_gap_list"], "outputs": ["standard_review_decision"]},
+      "side_effect": "none",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "dataset_builder",
+      "kind": "execution",
+      "responsibility": "脱敏、按时间切分开发集与留出集，按复核后的标准标注（双人标注+分歧仲裁），补足高危少数类",
+      "owner": "Bruce",
+      "contract": {"inputs": ["脱敏历史胸痛分诊病例", "gold_standard_vN", "outcome_labels"], "outputs": ["dev_set", "holdout_set_hashed"]},
+      "side_effect": "internal-reversible",
+      "writes": ["dev_set", "holdout_set"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "prompt_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "基于开发集错误分析改写分诊助手提示词，每轮产出一个候选版本及改动理由；只能看开发集",
+      "owner": "Bruce",
+      "contract": {"inputs": ["dev_set", "gold_standard_vN", "dev_error_report", "verifier_feedback"], "outputs": ["prompt_candidate_vK", "change_rationale"]},
+      "max_iterations": 15,
+      "evidence_sources": ["dev_set", "gold_standard"],
+      "optimizes": "weighted_agreement_kappa",
+      "side_effect": "internal-reversible",
+      "writes": ["prompt_repo"],
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "dev_evaluator",
+      "kind": "execution",
+      "responsibility": "在开发集上运行候选提示词，计算加权一致率、混淆矩阵、逐例错误报告（多次采样检验稳定性）",
+      "owner": "Bruce",
+      "contract": {"inputs": ["prompt_candidate_vK", "dev_set", "gold_standard_vN"], "outputs": ["dev_error_report", "dev_metrics"]},
+      "evidence_sources": ["dev_set", "gold_standard"],
+      "side_effect": "none",
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "safety_counter_metric",
+      "kind": "counter_metric_loop",
+      "responsibility": "独立于一致率，按真实结局计算高危漏分级率、结局关联敏感度和过分级率；任一高危漏判即否决候选",
+      "owner": "Bruce",
+      "contract": {"inputs": ["prompt_candidate_vK", "dev_set", "outcome_labels"], "outputs": ["safety_report", "veto_signal"]},
+      "max_iterations": 15,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["outcomes"],
+      "optimizes": "high_risk_under_triage_rate",
+      "side_effect": "none",
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "holdout_verifier",
+      "kind": "verification_loop",
+      "responsibility": "在冻结留出集上一次性评估定稿候选，报告一致率、漏分级、泛化差距、亚组（年龄、性别、不典型症状、糖尿病）表现",
+      "owner": "Bruce",
+      "contract": {"inputs": ["prompt_candidate_final", "holdout_set_hashed"], "outputs": ["holdout_report", "verifier_feedback"]},
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["holdout_set", "outcomes"],
+      "optimizes": "holdout_generalization_gap",
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "goodhart_audit",
+      "kind": "audit_loop",
+      "responsibility": "审计提示词是否通过刷分捷径提升一致率（向多数类收敛、硬编码关键词、记忆病例、牺牲少数高危类），检查改动可解释性与标准条款可追溯",
+      "owner": "Bruce",
+      "contract": {"inputs": ["prompt_candidate_vK", "change_rationale", "dev_metrics", "safety_report"], "outputs": ["audit_findings"]},
+      "max_iterations": 15,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["prompt_diffs", "class_distribution"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "合并一致率、安全反指标、留出集与审计结论，决定继续迭代、定稿送验或停止交接",
+      "owner": "Bruce",
+      "contract": {"inputs": ["dev_metrics", "safety_report", "veto_signal", "audit_findings", "holdout_report"], "outputs": ["iteration_decision", "prompt_candidate_final"]},
+      "priority_policy": "安全否决 > 留出集泛化 > 审计发现 > 加权一致率",
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "gate_deploy",
+      "kind": "human_gate",
+      "responsibility": "Bruce 联合科室主任、护理部、医务部/伦理审查批准影子模式试运行及后续逐步启用",
+      "owner": "Bruce",
+      "contract": {"inputs": ["holdout_report", "safety_report", "audit_findings", "prompt_candidate_final"], "outputs": ["deploy_approval"]},
+      "side_effect": "high-risk",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "shadow_monitor",
+      "kind": "verification_loop",
+      "responsibility": "影子模式下助手只记录建议不展示/不干预，定期比对护士实际分级与30天结局，发现漂移或安全信号即上报",
+      "owner": "Bruce",
+      "contract": {"inputs": ["deploy_approval", "prompt_candidate_final", "outcome_labels"], "outputs": ["shadow_report"]},
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["live_triage_records", "outcomes"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "handoff",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时汇总交接包交 Bruce",
+      "owner": "Bruce",
+      "contract": {"inputs": ["iteration_decision", "shadow_report", "holdout_report", "standard_gap_list"], "outputs": ["停止交接包"]},
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "standard_review", "to": "gate_standard", "relation": "feeds", "artifact": "standard_gap_list"},
+    {"from": "gate_standard", "to": "anchor_gold_standard", "relation": "constrains", "artifact": "standard_review_decision"},
+    {"from": "anchor_outcomes", "to": "standard_review", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "anchor_gold_standard", "to": "dataset_builder", "relation": "anchors", "artifact": "gold_standard_vN"},
+    {"from": "anchor_outcomes", "to": "dataset_builder", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "dataset_builder", "to": "anchor_holdout", "relation": "feeds", "artifact": "holdout_set_hashed"},
+    {"from": "dataset_builder", "to": "prompt_optimizer", "relation": "feeds", "artifact": "dev_set"},
+    {"from": "dataset_builder", "to": "dev_evaluator", "relation": "feeds", "artifact": "dev_set"},
+    {"from": "dataset_builder", "to": "safety_counter_metric", "relation": "feeds", "artifact": "dev_set"},
+    {"from": "anchor_gold_standard", "to": "prompt_optimizer", "relation": "anchors", "artifact": "gold_standard_vN"},
+    {"from": "anchor_gold_standard", "to": "dev_evaluator", "relation": "anchors", "artifact": "gold_standard_vN"},
+    {"from": "prompt_optimizer", "to": "dev_evaluator", "relation": "feeds", "artifact": "prompt_candidate_vK"},
+    {"from": "prompt_optimizer", "to": "safety_counter_metric", "relation": "feeds", "artifact": "prompt_candidate_vK"},
+    {"from": "prompt_optimizer", "to": "goodhart_audit", "relation": "feeds", "artifact": "change_rationale"},
+    {"from": "anchor_outcomes", "to": "safety_counter_metric", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "dev_evaluator", "to": "arbiter", "relation": "feeds", "artifact": "dev_metrics"},
+    {"from": "dev_evaluator", "to": "goodhart_audit", "relation": "feeds", "artifact": "dev_metrics"},
+    {"from": "safety_counter_metric", "to": "goodhart_audit", "relation": "feeds", "artifact": "safety_report"},
+    {"from": "safety_counter_metric", "to": "arbiter", "relation": "vetoes", "artifact": "veto_signal"},
+    {"from": "goodhart_audit", "to": "arbiter", "relation": "verifies", "artifact": "audit_findings"},
+    {"from": "arbiter", "to": "holdout_verifier", "relation": "feeds", "artifact": "prompt_candidate_final"},
+    {"from": "anchor_holdout", "to": "holdout_verifier", "relation": "anchors", "artifact": "holdout_set_hashed"},
+    {"from": "holdout_verifier", "to": "arbiter", "relation": "verifies", "artifact": "holdout_report"},
+    {"from": "dev_evaluator", "to": "prompt_optimizer", "relation": "revises", "artifact": "dev_error_report"},
+    {"from": "holdout_verifier", "to": "prompt_optimizer", "relation": "revises", "artifact": "verifier_feedback"},
+    {"from": "arbiter", "to": "gate_deploy", "relation": "escalates", "artifact": "prompt_candidate_final"},
+    {"from": "gate_deploy", "to": "shadow_monitor", "relation": "constrains", "artifact": "deploy_approval"},
+    {"from": "anchor_outcomes", "to": "shadow_monitor", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "shadow_monitor", "to": "anchor_gold_standard", "relation": "observes", "artifact": "shadow_report"},
+    {"from": "arbiter", "to": "handoff", "relation": "hands_off", "artifact": "iteration_decision"},
+    {"from": "shadow_monitor", "to": "handoff", "relation": "hands_off", "artifact": "shadow_report"},
+    {"from": "standard_review", "to": "handoff", "relation": "escalates", "artifact": "standard_gap_list"}
+  ]
+}

@@ -1,0 +1,41 @@
+{
+ "schema_version": "1.1",
+ "title": "自动调参提交",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "公开榜分数最高",
+  "human_owner": "Bruce",
+  "observable_success": "公开榜名次提升"
+ },
+ "nodes": [
+  {
+   "id": "tune",
+   "kind": "execution_loop",
+   "responsibility": "调参并用公开榜分数自评"
+  },
+  {
+   "id": "review",
+   "kind": "verification_loop",
+   "responsibility": "复查调参 Agent 的报告"
+  },
+  {
+   "id": "submit",
+   "kind": "execution",
+   "responsibility": "自动上传最佳模型"
+  }
+ ],
+ "edges": [
+  {
+   "from": "tune",
+   "to": "review",
+   "relation": "feeds",
+   "artifact": "report"
+  },
+  {
+   "from": "review",
+   "to": "submit",
+   "relation": "feeds",
+   "artifact": "best-model"
+  }
+ ]
+}

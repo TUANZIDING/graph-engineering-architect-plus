@@ -1,0 +1,4 @@
+{
+ "mode": "graph_plus_loop",
+ "rationale": "设计校验回路与审计回路保证格式"
+}

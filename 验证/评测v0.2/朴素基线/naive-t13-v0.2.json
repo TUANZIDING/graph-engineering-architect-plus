@@ -1,0 +1,4 @@
+{
+ "mode": "graph_plus_loop",
+ "rationale": "备份、校验、审计、通知四个回路互相监督"
+}

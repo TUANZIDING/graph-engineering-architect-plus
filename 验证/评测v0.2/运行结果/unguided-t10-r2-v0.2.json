@@ -1,0 +1,314 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊出院流程双 Agent 改进控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "两个 Agent 优化的指标相互拮抗（缩短滞留会推高 72h 返诊，反之亦然），且都能改同一份出院标准与流程清单，存在并行写冲突与 Goodhart 风险；改动涉及患者安全（高风险副作用），需要独立锚点数据、反指标循环、仲裁、单写者和临床人审门。单一 loop 或线性流程无法表达这种多目标冲突与治理，故用图 + 有界迭代循环。",
+  "state": "proposed",
+  "root_goal": {
+    "statement": "在不降低患者安全的前提下改进急诊出院流程：同时缩短急诊滞留时间（ED LOS）并降低 72 小时非计划返诊率，任何改动须经临床治理批准后才能落地。",
+    "human_owner": "Bruce",
+    "observable_success": "试点周期（如 8 周）内，经 HIS/EMR 独立数据核实：ED LOS 中位数下降且 72h 返诊率不升高（或下降），72h 返诊入院率、返诊 ICU/死亡、未就诊离院率、出院后不良事件均未超出预设安全阈值；所有标准/清单变更均有版本记录和临床委员会批准。",
+    "metrics": [
+      "ed_length_of_stay_median",
+      "return_visit_rate_72h",
+      "return_admission_rate_72h",
+      "return_icu_or_death_72h",
+      "left_without_being_seen_rate",
+      "post_discharge_adverse_events",
+      "boarding_and_admission_rate"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "read_deidentified_ed_visit_data",
+      "analyze_ed_los_and_return_visits",
+      "draft_discharge_criteria_change_proposals",
+      "draft_discharge_checklist_change_proposals",
+      "run_retrospective_simulation_on_historical_data",
+      "write_proposals_to_proposal_queue",
+      "produce_reports_for_clinical_review"
+    ],
+    "forbidden_actions": [
+      "directly_modify_live_discharge_criteria",
+      "directly_modify_live_discharge_checklist",
+      "make_individual_patient_discharge_decisions",
+      "override_physician_clinical_judgment",
+      "change_metric_definitions_or_data_extraction_logic",
+      "redefine_or_exclude_return_visits_to_improve_metric",
+      "shift_patients_to_admission_or_observation_to_hide_los",
+      "access_identifiable_patient_data_outside_scope",
+      "deploy_changes_without_human_gate_approval"
+    ]
+  },
+  "frozen_rules": [
+    "Agent 只能提出改动提案，出院标准与流程清单的唯一写入者是经批准后的变更实施节点（由人执行）。",
+    "ED LOS、72h 返诊率及安全反指标的定义、口径、提取 SQL 和排除规则冻结，任何 Agent 不得修改。",
+    "红线安全标准（生命体征稳定阈值、高危主诉必查项、高危人群出院前评估、医嘱/随访交代）不得被删减或放宽。",
+    "任何提案若使任一安全反指标超过阈值，自动否决。",
+    "验证者必须与提案 Agent 上下文独立，且只读 HIS/EMR 锚点数据，不读 Agent 自报结果。",
+    "最终出院决定始终由医生做出，Agent 输出仅为流程建议。",
+    "每轮仅允许一个合并后的变更包进入试点；试点前后必须有版本号与回滚方案。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 9,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": {
+    "on_safety_threshold_breach": "立即停止当前试点并回滚到上一批准版本，交由 Bruce 与急诊质控委员会处理",
+    "on_agent_conflict_unresolved": "仲裁节点无法在预算内给出帕累托改进方案时，上报人审门，不自行取舍",
+    "on_data_anchor_stale": "锚点数据超过 max_age_days 未刷新时暂停所有优化循环",
+    "on_verification_disagreement": "验证结果与 Agent 自报差异超过阈值时视为疑似刷指标，冻结该 Agent 提案并审计",
+    "on_budget_exhausted": "停止迭代，输出当前最佳已验证方案与未解决冲突清单交 Bruce",
+    "retry": "单个提案最多重试 2 次，超过即丢弃"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "任一安全反指标（72h 返诊入院、返诊 ICU/死亡、出院后不良事件）超过预设阈值",
+      "两个优化 Agent 的提案在仲裁后仍无法同时满足双目标",
+      "达到 max_iterations 或 max_cost_units",
+      "锚点数据过期或数据口径疑似被改动",
+      "审计发现规则绕过或指标操纵",
+      "试点周期结束需决定是否全院推广"
+    ],
+    "artifact": "handoff-report：当前批准版本的出院标准/清单、各轮提案与仲裁记录、独立验证与安全反指标结果、未解决冲突、回滚方案与建议"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_his_emr_outcomes",
+      "source": "医院 HIS/EMR 急诊就诊记录（到达、分诊、出院/离院时间戳、72h 内同一患者再就诊及去向）",
+      "evidence_form": "按冻结口径提取的去标识化就诊级数据与周期汇总指标",
+      "owner": "Bruce",
+      "freshness_rule": "每周由信息科按冻结 SQL 重新提取；72h 返诊需等待出院后满 72h 才计入",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_safety_baseline",
+      "source": "急诊质控委员会确认的基线指标与安全阈值、红线出院标准",
+      "evidence_form": "签字版安全阈值表与红线标准文件",
+      "owner": "Bruce",
+      "freshness_rule": "每季度复核，或任何阈值变更须委员会重新签字",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "current_discharge_criteria_v_n",
+    "current_discharge_checklist_v_n",
+    "clinical_committee_decision"
+  ],
+  "nodes": [
+    {
+      "id": "anchor_his_emr_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供冻结口径的 ED LOS、72h 返诊及安全结局真实数据，作为所有评估的唯一事实来源",
+      "owner": "Bruce",
+      "contract": {"inputs": [], "outputs": ["outcome_dataset"]},
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_safety_baseline",
+      "kind": "anchor",
+      "responsibility": "提供基线、安全阈值和不可放宽的红线出院标准",
+      "owner": "Bruce",
+      "contract": {"inputs": [], "outputs": ["safety_thresholds", "redline_criteria"]},
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "agent_los_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "分析滞留瓶颈（检查等待、会诊、出院文书、药房、转运），提出缩短 ED LOS 的出院标准/清单修改提案",
+      "owner": "Bruce",
+      "max_iterations": 5,
+      "optimizes": "ed_length_of_stay_median",
+      "evidence_sources": ["outcome_dataset", "current_discharge_criteria_v_n", "current_discharge_checklist_v_n"],
+      "side_effect": "internal-reversible",
+      "writes": ["proposal_queue_los"],
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": ["outcome_dataset", "current_discharge_criteria_v_n", "current_discharge_checklist_v_n", "redline_criteria", "arbitration_feedback"],
+        "outputs": ["los_change_proposal"]
+      }
+    },
+    {
+      "id": "agent_return_reducer",
+      "kind": "execution_loop",
+      "responsibility": "分析 72h 返诊原因（漏诊、出院宣教不足、随访缺失、用药问题），提出降低返诊率的出院标准/清单修改提案",
+      "owner": "Bruce",
+      "max_iterations": 5,
+      "optimizes": "return_visit_rate_72h",
+      "evidence_sources": ["outcome_dataset", "current_discharge_criteria_v_n", "current_discharge_checklist_v_n"],
+      "side_effect": "internal-reversible",
+      "writes": ["proposal_queue_return"],
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": ["outcome_dataset", "current_discharge_criteria_v_n", "current_discharge_checklist_v_n", "redline_criteria", "arbitration_feedback"],
+        "outputs": ["return_change_proposal"]
+      }
+    },
+    {
+      "id": "counter_metric_safety",
+      "kind": "counter_metric_loop",
+      "responsibility": "对每个提案做回顾性模拟，评估其对对方指标及安全反指标（返诊入院、返诊 ICU/死亡、LWBS、收住院/留观转移、不良事件）的影响，防止单指标优化的 Goodhart 效应",
+      "owner": "Bruce",
+      "max_iterations": 5,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["outcome_dataset", "safety_thresholds"],
+      "side_effect": "none",
+      "writes": ["counter_metric_report"],
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": ["los_change_proposal", "return_change_proposal", "outcome_dataset", "safety_thresholds", "redline_criteria"],
+        "outputs": ["counter_metric_report", "safety_veto"]
+      }
+    },
+    {
+      "id": "arbitration_merge",
+      "kind": "arbitration",
+      "responsibility": "合并两份提案，解决冲突（同一条款相反修改），只保留在双目标与安全约束下帕累托改进的组合，生成单一变更包；无法调和时上报",
+      "owner": "Bruce",
+      "priority_policy": "患者安全 > 72h 返诊率不恶化 > ED LOS 缩短；冲突条款取更保守者；被安全否决的条款直接剔除",
+      "evidence_sources": ["counter_metric_report"],
+      "side_effect": "internal-reversible",
+      "writes": ["merged_change_package"],
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": ["los_change_proposal", "return_change_proposal", "counter_metric_report", "safety_veto"],
+        "outputs": ["merged_change_package", "arbitration_feedback", "unresolved_conflicts"]
+      }
+    },
+    {
+      "id": "independent_verifier",
+      "kind": "verification_loop",
+      "responsibility": "上下文独立地用锚点数据复核合并变更包的模拟结果，并在试点后核实真实指标变化，与 Agent 自报对比",
+      "owner": "Bruce",
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["outcome_dataset", "safety_thresholds"],
+      "side_effect": "none",
+      "writes": ["verification_report"],
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": ["merged_change_package", "outcome_dataset", "safety_thresholds"],
+        "outputs": ["verification_report"]
+      }
+    },
+    {
+      "id": "audit_gaming",
+      "kind": "audit_loop",
+      "responsibility": "审计指标操纵与规则绕过：口径漂移、把患者转入留观/住院以缩短 LOS、返诊转去他院、删减红线条款、提案越权写入",
+      "owner": "Bruce",
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["outcome_dataset", "redline_criteria"],
+      "side_effect": "none",
+      "writes": ["audit_report"],
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": ["merged_change_package", "verification_report", "outcome_dataset", "redline_criteria"],
+        "outputs": ["audit_report"]
+      }
+    },
+    {
+      "id": "human_gate_clinical",
+      "kind": "human_gate",
+      "responsibility": "Bruce 与急诊质控/医务委员会审阅变更包、验证与审计报告，批准试点、要求修改或否决",
+      "owner": "Bruce",
+      "side_effect": "none",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": ["merged_change_package", "verification_report", "audit_report", "unresolved_conflicts"],
+        "outputs": ["clinical_committee_decision"]
+      }
+    },
+    {
+      "id": "change_implementer",
+      "kind": "execution",
+      "responsibility": "唯一写入者：按批准决定发布新版出院标准/清单（版本号+回滚方案），在试点单元执行并记录",
+      "owner": "Bruce",
+      "side_effect": "high-risk",
+      "writes": ["live_discharge_criteria", "live_discharge_checklist"],
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": ["clinical_committee_decision", "merged_change_package"],
+        "outputs": ["current_discharge_criteria_v_n", "current_discharge_checklist_v_n", "pilot_change_log"]
+      }
+    },
+    {
+      "id": "governance_review",
+      "kind": "governance_loop",
+      "responsibility": "周期性检查锚点新鲜度、预算、迭代次数、安全阈值触发与是否需停机移交",
+      "owner": "Bruce",
+      "max_iterations": 4,
+      "side_effect": "none",
+      "cadence_tier": "governance",
+      "contract": {
+        "inputs": ["pilot_change_log", "verification_report", "audit_report", "safety_veto"],
+        "outputs": ["governance_status", "stop_signal"]
+      }
+    },
+    {
+      "id": "stop_handoff_bruce",
+      "kind": "stop_handoff",
+      "responsibility": "触发停止条件时回滚并汇总移交报告给 Bruce",
+      "owner": "Bruce",
+      "side_effect": "internal-reversible",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": ["stop_signal", "governance_status", "pilot_change_log", "unresolved_conflicts"],
+        "outputs": ["handoff-report"]
+      }
+    }
+  ],
+  "edges": [
+    {"from": "anchor_his_emr_outcomes", "to": "agent_los_optimizer", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_his_emr_outcomes", "to": "agent_return_reducer", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_his_emr_outcomes", "to": "counter_metric_safety", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_his_emr_outcomes", "to": "independent_verifier", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_his_emr_outcomes", "to": "audit_gaming", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_safety_baseline", "to": "agent_los_optimizer", "relation": "constrains", "artifact": "redline_criteria"},
+    {"from": "anchor_safety_baseline", "to": "agent_return_reducer", "relation": "constrains", "artifact": "redline_criteria"},
+    {"from": "anchor_safety_baseline", "to": "counter_metric_safety", "relation": "anchors", "artifact": "safety_thresholds"},
+    {"from": "anchor_safety_baseline", "to": "independent_verifier", "relation": "anchors", "artifact": "safety_thresholds"},
+    {"from": "anchor_safety_baseline", "to": "audit_gaming", "relation": "anchors", "artifact": "redline_criteria"},
+    {"from": "agent_los_optimizer", "to": "counter_metric_safety", "relation": "feeds", "artifact": "los_change_proposal"},
+    {"from": "agent_return_reducer", "to": "counter_metric_safety", "relation": "feeds", "artifact": "return_change_proposal"},
+    {"from": "agent_los_optimizer", "to": "arbitration_merge", "relation": "feeds", "artifact": "los_change_proposal"},
+    {"from": "agent_return_reducer", "to": "arbitration_merge", "relation": "feeds", "artifact": "return_change_proposal"},
+    {"from": "counter_metric_safety", "to": "arbitration_merge", "relation": "feeds", "artifact": "counter_metric_report"},
+    {"from": "counter_metric_safety", "to": "arbitration_merge", "relation": "vetoes", "artifact": "safety_veto"},
+    {"from": "arbitration_merge", "to": "agent_los_optimizer", "relation": "revises", "artifact": "arbitration_feedback"},
+    {"from": "arbitration_merge", "to": "agent_return_reducer", "relation": "revises", "artifact": "arbitration_feedback"},
+    {"from": "arbitration_merge", "to": "independent_verifier", "relation": "feeds", "artifact": "merged_change_package"},
+    {"from": "independent_verifier", "to": "arbitration_merge", "relation": "verifies", "artifact": "verification_report"},
+    {"from": "arbitration_merge", "to": "audit_gaming", "relation": "feeds", "artifact": "merged_change_package"},
+    {"from": "independent_verifier", "to": "audit_gaming", "relation": "feeds", "artifact": "verification_report"},
+    {"from": "arbitration_merge", "to": "human_gate_clinical", "relation": "feeds", "artifact": "merged_change_package"},
+    {"from": "arbitration_merge", "to": "human_gate_clinical", "relation": "escalates", "artifact": "unresolved_conflicts"},
+    {"from": "independent_verifier", "to": "human_gate_clinical", "relation": "feeds", "artifact": "verification_report"},
+    {"from": "audit_gaming", "to": "human_gate_clinical", "relation": "feeds", "artifact": "audit_report"},
+    {"from": "human_gate_clinical", "to": "change_implementer", "relation": "feeds", "artifact": "clinical_committee_decision"},
+    {"from": "change_implementer", "to": "governance_review", "relation": "feeds", "artifact": "pilot_change_log"},
+    {"from": "independent_verifier", "to": "governance_review", "relation": "feeds", "artifact": "verification_report"},
+    {"from": "audit_gaming", "to": "governance_review", "relation": "feeds", "artifact": "audit_report"},
+    {"from": "counter_metric_safety", "to": "governance_review", "relation": "escalates", "artifact": "safety_veto"},
+    {"from": "change_implementer", "to": "anchor_his_emr_outcomes", "relation": "observes", "artifact": "pilot_change_log"},
+    {"from": "governance_review", "to": "agent_los_optimizer", "relation": "constrains", "artifact": "governance_status"},
+    {"from": "governance_review", "to": "agent_return_reducer", "relation": "constrains", "artifact": "governance_status"},
+    {"from": "governance_review", "to": "stop_handoff_bruce", "relation": "hands_off", "artifact": "stop_signal"}
+  ]
+}

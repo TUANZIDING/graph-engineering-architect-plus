@@ -1,0 +1,288 @@
+{
+ "schema_version": "1.1",
+ "title": "放射性骨骼肌损伤英文综述：检索到可投稿稿件",
+ "mode": "graph",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "写一篇引用真实、数字准确、结论不夸大的综述初稿",
+  "human_owner": "Bruce",
+  "observable_success": "每条引用经 PubMed/Crossref 核实存在，每个数字可回溯到原文，Bruce 确认初稿",
+  "metrics": [
+   "verified_citation_rate"
+  ]
+ },
+ "external_inputs": [
+  "pubmed-export",
+  "pubmed-api",
+  "fulltext-pdf",
+  "draft-notes",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "检索与筛选",
+   "起草与修改"
+  ],
+  "forbidden_actions": [
+   "投稿",
+   "对外发送邮件",
+   "编造或补全未核实的文献"
+  ]
+ },
+ "frozen_rules": [
+  "只引用经 PubMed/Crossref 核实的文献",
+  "数字只能来自原文全文"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "引用无法核实",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "lit-db",
+   "source": "PubMed/Crossref 检索记录与原文全文 PDF",
+   "evidence_form": "PMID/DOI 清单与全文哈希",
+   "owner": "Bruce",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "lit-db",
+   "kind": "anchor",
+   "responsibility": "冻结的检索结果与原文全文",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "pubmed-export"
+    ],
+    "outputs": [
+     "fulltext-set"
+    ]
+   }
+  },
+  {
+   "id": "draft",
+   "kind": "execution_loop",
+   "responsibility": "检索、筛选、起草与修改",
+   "owner": "写作 Agent",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "fulltext-set"
+    ],
+    "outputs": [
+     "draft"
+    ]
+   },
+   "optimizes": "verified_citation_rate",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "fulltext-set",
+    "draft-notes"
+   ],
+   "writes": [
+    "draft/"
+   ]
+  },
+  {
+   "id": "cite-check",
+   "kind": "verification_loop",
+   "responsibility": "逐条核实参考文献在 PubMed/Crossref 存在、DOI 与元数据一致，并核对数字与原文",
+   "owner": "引用核实脚本",
+   "contract": {
+    "inputs": [
+     "draft",
+     "fulltext-set"
+    ],
+    "outputs": [
+     "citation-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 2,
+   "evidence_sources": [
+    "pubmed-api"
+   ]
+  },
+  {
+   "id": "claim-audit",
+   "kind": "audit_loop",
+   "responsibility": "检查夸大、因果措辞和为显新颖的过度结论",
+   "owner": "独立审稿 Agent",
+   "contract": {
+    "inputs": [
+     "draft",
+     "fulltext-set"
+    ],
+    "outputs": [
+     "claim-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 2,
+   "evidence_sources": [
+    "fulltext-pdf"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "引用核实与措辞审查冲突时裁决",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "citation-report",
+     "claim-report"
+    ],
+    "outputs": [
+     "revision-orders"
+    ]
+   },
+   "priority_policy": "引用真实 > 数字准确 > 结论措辞 > 新颖性"
+  },
+  {
+   "id": "author-gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 确认初稿；投稿另行决定",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "revision-orders"
+    ],
+    "outputs": [
+     "author-decision"
+    ]
+   }
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "draft",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "lit-db",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "lit-db",
+   "to": "draft",
+   "relation": "feeds",
+   "artifact": "fulltext-set"
+  },
+  {
+   "from": "lit-db",
+   "to": "cite-check",
+   "relation": "anchors",
+   "artifact": "fulltext-set"
+  },
+  {
+   "from": "lit-db",
+   "to": "claim-audit",
+   "relation": "anchors",
+   "artifact": "fulltext-set"
+  },
+  {
+   "from": "draft",
+   "to": "cite-check",
+   "relation": "feeds",
+   "artifact": "draft"
+  },
+  {
+   "from": "draft",
+   "to": "claim-audit",
+   "relation": "feeds",
+   "artifact": "draft"
+  },
+  {
+   "from": "cite-check",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "citation-report"
+  },
+  {
+   "from": "claim-audit",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "claim-report"
+  },
+  {
+   "from": "cite-check",
+   "to": "stop",
+   "relation": "vetoes",
+   "artifact": "citation-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "author-gate",
+   "relation": "constrains",
+   "artifact": "revision-orders"
+  },
+  {
+   "from": "author-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "author-decision"
+  }
+ ]
+}

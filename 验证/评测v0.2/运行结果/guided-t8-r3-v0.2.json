@@ -1,0 +1,645 @@
+{
+ "schema_version": "1.1",
+ "title": "科研代码库失败测试自动修复——受控图",
+ "mode": "graph_plus_loop",
+ "state": "designed",
+ "root_goal": {
+  "statement": "科研代码库在 Bruce 冻结的受保护测试集与科学参考输出上全部通过，且测试集本身未被削弱，代码以经批准、可回滚的方式进入 main",
+  "human_owner": "Bruce",
+  "observable_success": "隔离 CI 从受保护 ref 执行 tests/protected 连续 3 次全绿；受保护测试/CI 配置 diff 为空且无新增 skip/xfail/容差放宽；golden 参考数值一致；变更代码变异得分不下降；每次合入 main 有 Bruce 批准记录",
+  "out_of_scope": [
+   "Agent 自动合并到 main（原需求，改为 Bruce 审批后合并）",
+   "Agent 修改、删除、跳过或放宽既有/受保护测试与参考输出",
+   "Agent 修改 CI 配置、依赖锁、阈值或成功定义",
+   "以 Agent 新增的测试作为'全绿'完成证据",
+   "改动科研结论/算法语义以迎合测试"
+  ],
+  "metrics": [
+   "protected_failing_test_count",
+   "new_covered_behaviors",
+   "mutation_score",
+   "golden_output_agreement"
+  ]
+ },
+ "classification_rationale": "原需求让同一个 Agent 既修代码、又改测试、又自动合并——改进者能改写自己的裁判（测试），'测试全绿'就可通过删/改/skip 测试廉价达成，是典型元回路劫持与刷指标。单回路无法自察，因此需要图：冻结的受保护测试与隔离 CI 作现实锚点、独立验证者与反指标拥有否决权、新测试只能提案并经人工晋升、合并改为人工门；修复回路本身需持久状态（graph_plus_loop，fix_loop 交给 loop-engineering 实例化）。",
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "在 agent/* 分支修改非测试源码",
+   "在 tests/proposed/ 新增测试提案",
+   "触发隔离 CI 运行",
+   "生成合并建议与交接报告"
+  ],
+  "forbidden_actions": [
+   "直接推送或自动合并到 main",
+   "修改/删除/skip/xfail tests/protected 与 conftest",
+   "修改 CI 配置、依赖锁、覆盖率或容差阈值",
+   "修改 golden 参考输出",
+   "修改验证/反指标/审计节点的逻辑",
+   "强制推送或改写 main 历史"
+  ]
+ },
+ "frozen_rules": [
+  "tests/protected、conftest.py、golden 参考输出、CI 配置受 CODEOWNERS=Bruce 与分支保护，Agent 只读",
+  "'全绿'仅以隔离 CI 从受保护 ref 执行的受保护测试为准，Agent 新增测试不计入",
+  "Agent 新增测试只能进 tests/proposed/，晋升需 Bruce 批准",
+  "合并 main 必须有 Bruce 批准记录 + 合并前 CI 再验",
+  "任一检查者否决即不得合并",
+  "锚点、阈值、权限、根目标的变更只能提议，经 Bruce 批准生效"
+ ],
+ "approval": {
+  "status": "pending"
+ },
+ "budget": {
+  "max_agents": 8,
+  "max_concurrency": 3,
+  "max_retries": 2,
+  "max_cost_units": 40
+ },
+ "failure_policy": {
+  "failed": "补丁回滚/丢弃分支，记录否决原因并交接 Bruce",
+  "blocked": "锚点过期、CI 不可用或受保护测试本身疑似错误时停机，升级 Bruce 决定是否修订锚点",
+  "budget_exhausted": "停止迭代，输出未修复测试清单与尝试记录交接 Bruce",
+  "stalled": "连续 2 轮失败测试数不下降即停止并升级"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "completed: 受保护测试隔离 CI 连续全绿且反指标通过、Bruce 批准并合入",
+   "failed: 合并后 CI/审计发现回归，已 revert",
+   "blocked: 锚点过期或受保护测试被判定有误，待 Bruce 裁决",
+   "budget_exhausted: 达到 max_iterations/成本上限仍有失败测试"
+  ],
+  "artifact": "handoff.md"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "governance": {
+  "arbitration": {
+   "owner": "Bruce",
+   "priority_policy": "测试集完整性与科学结果正确性 > 受保护测试全绿 > 新测试覆盖 > 修复速度；任一否决优先"
+  },
+  "goal_change": "human_approval",
+  "approval_required": [
+   "Root-goal change",
+   "Anchor change（含受保护测试增删改、golden 输出、CI 配置）",
+   "Permission expansion（含任何自动合并）",
+   "Proposed test promotion"
+  ]
+ },
+ "verification": {
+  "independence_statement": "验证者为隔离 CI 服务，与修复/提案 Agent 所有者不同；它从受保护 ref 拉取测试与参考输出并亲自执行，不使用 Agent 分支上的测试副本或 Agent 的本地运行日志；反指标直接对比受保护 ref 的 git diff 与 main 上的变异运行，数据来源独立于执行者。",
+  "checks": [
+   {
+    "verifier_node": "ci_verifier",
+    "criterion": "tests/protected 在隔离 CI 中连续 3 次全部通过",
+    "evidence": "CI 执行日志 + 受保护 ref sha",
+    "failure_signal": "任一测试失败/超时/flaky"
+   },
+   {
+    "verifier_node": "proposal_verifier",
+    "criterion": "提案测试在 main 上确定性通过且能杀死注入变异体",
+    "evidence": "变异测试运行日志",
+    "failure_signal": "不杀变异体、非确定性或依赖实现细节"
+   }
+  ]
+ },
+ "external_inputs": [
+  "Bruce 批准的测试集版本",
+  "Bruce 批准的 CI 配置",
+  "coverage-gap-report",
+  "failing-test-report",
+  "veto-reasons",
+  "escalation-report"
+ ],
+ "anchors": [
+  {
+   "node_id": "protected_suite_anchor",
+   "source": "受保护分支上的 tests/protected 与 golden 参考输出（CODEOWNERS=Bruce）",
+   "evidence_form": "pinned commit sha 下的测试文件与参考数值",
+   "owner": "Bruce",
+   "freshness_rule": "每次科研算法有意变更或每 30 天由 Bruce 复核；过期则阻止验证",
+   "frozen": true,
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-15"
+  },
+  {
+   "node_id": "ci_runner_anchor",
+   "source": "隔离 CI 环境与锁定配置（Agent 无写权限）",
+   "evidence_form": "CI 实际执行产生的测试日志与配置 sha",
+   "owner": "Bruce",
+   "freshness_rule": "依赖锁或运行镜像每 30 天复核",
+   "frozen": true,
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-15"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "protected_suite_anchor",
+   "kind": "anchor",
+   "owner": "Bruce",
+   "cadence": "human",
+   "cadence_tier": "human",
+   "responsibility": "冻结的基线测试集+科学参考输出(golden fixtures)，存于受保护目录 tests/protected/ 与受保护 ref，CODEOWNERS=Bruce；Agent 只读，任何修改/删除/skip 只能经人工门",
+   "contract": {
+    "inputs": [
+     "Bruce 批准的测试集版本"
+    ],
+    "outputs": [
+     "protected-suite@pinned-sha",
+     "golden-reference-outputs"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "ci_runner_anchor",
+   "kind": "anchor",
+   "owner": "Bruce",
+   "cadence": "human",
+   "cadence_tier": "human",
+   "responsibility": "隔离 CI 执行环境与 CI 配置（锁定依赖、随机种子、超时），由 Bruce 管理；Agent 无写权限，测试结果由 CI 实际执行产生而非 Agent 转述",
+   "contract": {
+    "inputs": [
+     "Bruce 批准的 CI 配置"
+    ],
+    "outputs": [
+     "executed-test-log",
+     "ci-config@pinned-sha"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "fix_loop",
+   "kind": "execution_loop",
+   "owner": "repair-agent",
+   "cadence": "per-iteration",
+   "cadence_tier": "fast",
+   "max_iterations": 5,
+   "responsibility": "在 agent/fix-* 分支上只改被测源码修复失败测试；不得触碰 tests/protected、conftest、CI 配置、阈值；每轮提交补丁候选",
+   "contract": {
+    "inputs": [
+     "failing-test-report",
+     "arbitration-ruling",
+     "integrity-findings"
+    ],
+    "outputs": [
+     "fix-patch-candidate"
+    ]
+   },
+   "optimizes": "protected_failing_test_count",
+   "evidence_sources": [
+    "agent-branch-workspace",
+    "local-test-run"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "agent/fix-branch"
+   ]
+  },
+  {
+   "id": "test_proposal_loop",
+   "kind": "execution_loop",
+   "owner": "test-author-agent",
+   "cadence": "per-iteration",
+   "cadence_tier": "fast",
+   "max_iterations": 3,
+   "responsibility": "只在 tests/proposed/ 新增测试提案（不修改、不删除既有测试），每条附覆盖目标与预期失败场景；提案不计入'全绿'判定，晋升为受保护测试须 Bruce 批准",
+   "contract": {
+    "inputs": [
+     "coverage-gap-report",
+     "proposal-rejections"
+    ],
+    "outputs": [
+     "proposed-test-candidates"
+    ]
+   },
+   "optimizes": "new_covered_behaviors",
+   "evidence_sources": [
+    "agent-branch-workspace",
+    "coverage-gap-report"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "agent/tests-proposed-branch"
+   ]
+  },
+  {
+   "id": "ci_verifier",
+   "kind": "verification_loop",
+   "owner": "ci-service",
+   "cadence": "per-candidate",
+   "cadence_tier": "medium",
+   "max_iterations": 2,
+   "context_scope": "fresh-independent",
+   "responsibility": "在隔离 CI 中从受保护 ref 取 tests/protected（不用分支上的测试副本）对补丁执行全量测试，重复 3 次排除 flaky；任一失败即否决",
+   "contract": {
+    "inputs": [
+     "fix-patch-candidate",
+     "protected-suite@pinned-sha",
+     "executed-test-log"
+    ],
+    "outputs": [
+     "ci-verdict",
+     "failing-test-report"
+    ]
+   },
+   "evidence_sources": [
+    "protected-suite@pinned-sha",
+    "executed-test-log"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "proposal_verifier",
+   "kind": "verification_loop",
+   "owner": "ci-service",
+   "cadence": "per-candidate",
+   "cadence_tier": "medium",
+   "max_iterations": 2,
+   "context_scope": "fresh-independent",
+   "responsibility": "对提案测试做独立检验：在 main 上确定性通过、在注入变异体上能失败(mutation kill)、不依赖被测实现细节、不重复；不合格否决",
+   "contract": {
+    "inputs": [
+     "proposed-test-candidates",
+     "executed-test-log",
+     "golden-reference-outputs"
+    ],
+    "outputs": [
+     "proposal-verdict",
+     "proposal-rejections"
+    ]
+   },
+   "evidence_sources": [
+    "mutation-run-on-main",
+    "executed-test-log"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "integrity_counter",
+   "kind": "counter_metric_loop",
+   "owner": "integrity-checker",
+   "cadence": "per-candidate",
+   "cadence_tier": "medium",
+   "max_iterations": 2,
+   "responsibility": "反指标：拆穿'刷绿'——受保护测试/conftest/CI 配置 diff 必须为空；禁止新增 skip/xfail/放宽容差/try-except 吞异常/硬编码期望值/特判测试环境；变更代码的变异得分与覆盖率不得下降；科学输出与 golden 参考数值一致",
+   "contract": {
+    "inputs": [
+     "fix-patch-candidate",
+     "proposed-test-candidates",
+     "golden-reference-outputs"
+    ],
+    "outputs": [
+     "integrity-findings"
+    ]
+   },
+   "evidence_sources": [
+    "git-diff-vs-protected-ref",
+    "mutation-run-on-main",
+    "golden-reference-outputs"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "weekly_audit",
+   "kind": "audit_loop",
+   "owner": "Bruce-delegated-auditor",
+   "cadence": "weekly",
+   "cadence_tier": "slow",
+   "max_iterations": 1,
+   "responsibility": "每周抽样已合并补丁：人工/独立复算关键科研结果、检查 flaky 率、受保护集与参考输出是否过期、反复失败模式；发现系统性问题升级",
+   "contract": {
+    "inputs": [
+     "merge-history",
+     "integrity-findings",
+     "golden-reference-outputs"
+    ],
+    "outputs": [
+     "audit-report"
+    ]
+   },
+   "evidence_sources": [
+    "merged-main-history",
+    "independent-recomputation"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "owner": "Bruce",
+   "cadence": "per-candidate",
+   "cadence_tier": "human",
+   "priority_policy": "测试集完整性与科学结果正确性 > 受保护测试全绿 > 新测试覆盖 > 修复速度；任一检查者否决即不合并",
+   "responsibility": "汇总 ci_verifier、proposal_verifier、integrity_counter 结论，按优先级形成合并建议包，冲突时按 priority_policy 取舍",
+   "contract": {
+    "inputs": [
+     "ci-verdict",
+     "proposal-verdict",
+     "integrity-findings"
+    ],
+    "outputs": [
+     "merge-recommendation"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "bruce_gate",
+   "kind": "human_gate",
+   "owner": "Bruce",
+   "cadence": "on-demand",
+   "cadence_tier": "human",
+   "responsibility": "Bruce 审批：补丁合并到 main（取代原需求中的自动合并）；提案测试晋升为受保护测试；任何锚点、阈值、权限、根目标变更",
+   "contract": {
+    "inputs": [
+     "merge-recommendation",
+     "audit-report",
+     "governance-proposal"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "merge_main",
+   "kind": "execution",
+   "owner": "merge-bot",
+   "cadence": "on-approval",
+   "cadence_tier": "human",
+   "responsibility": "仅在有 Bruce 批准记录且 CI 于合并前对 main+补丁再跑一次全绿时，以可回滚的 squash merge 合入 main；失败自动 revert",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "ci-verdict"
+    ],
+    "outputs": [
+     "merged-commit"
+    ]
+   },
+   "side_effect": "high-risk",
+   "writes": [
+    "main"
+   ]
+  },
+  {
+   "id": "governance",
+   "kind": "governance_loop",
+   "owner": "Bruce",
+   "cadence": "monthly",
+   "cadence_tier": "governance",
+   "responsibility": "每月审视根目标、反指标阈值、受保护测试范围、预算；只能提出修订建议，经 Bruce 门生效",
+   "contract": {
+    "inputs": [
+     "audit-report"
+    ],
+    "outputs": [
+     "governance-proposal"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "stop_handoff",
+   "kind": "stop_handoff",
+   "owner": "Bruce",
+   "cadence": "on-stop",
+   "cadence_tier": "human",
+   "responsibility": "终止/交接：输出 handoff.md（当前 main sha、CI 日志、未解决失败、否决原因、待批提案）",
+   "contract": {
+    "inputs": [
+     "merged-commit",
+     "escalation-report"
+    ],
+    "outputs": [
+     "handoff.md"
+    ]
+   },
+   "side_effect": "none"
+  }
+ ],
+ "edges": [
+  {
+   "from": "protected_suite_anchor",
+   "to": "ci_verifier",
+   "relation": "anchors",
+   "artifact": "protected-suite@pinned-sha"
+  },
+  {
+   "from": "ci_runner_anchor",
+   "to": "ci_verifier",
+   "relation": "anchors",
+   "artifact": "executed-test-log"
+  },
+  {
+   "from": "ci_runner_anchor",
+   "to": "proposal_verifier",
+   "relation": "anchors",
+   "artifact": "executed-test-log"
+  },
+  {
+   "from": "protected_suite_anchor",
+   "to": "proposal_verifier",
+   "relation": "anchors",
+   "artifact": "golden-reference-outputs"
+  },
+  {
+   "from": "protected_suite_anchor",
+   "to": "integrity_counter",
+   "relation": "anchors",
+   "artifact": "golden-reference-outputs"
+  },
+  {
+   "from": "protected_suite_anchor",
+   "to": "weekly_audit",
+   "relation": "anchors",
+   "artifact": "golden-reference-outputs"
+  },
+  {
+   "from": "fix_loop",
+   "to": "ci_verifier",
+   "relation": "feeds",
+   "artifact": "fix-patch-candidate"
+  },
+  {
+   "from": "fix_loop",
+   "to": "integrity_counter",
+   "relation": "feeds",
+   "artifact": "fix-patch-candidate"
+  },
+  {
+   "from": "test_proposal_loop",
+   "to": "proposal_verifier",
+   "relation": "feeds",
+   "artifact": "proposed-test-candidates"
+  },
+  {
+   "from": "test_proposal_loop",
+   "to": "integrity_counter",
+   "relation": "feeds",
+   "artifact": "proposed-test-candidates"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "fix_loop",
+   "relation": "vetoes",
+   "artifact": "failing-test-report"
+  },
+  {
+   "from": "integrity_counter",
+   "to": "fix_loop",
+   "relation": "vetoes",
+   "artifact": "integrity-findings"
+  },
+  {
+   "from": "integrity_counter",
+   "to": "test_proposal_loop",
+   "relation": "constrains",
+   "artifact": "integrity-findings"
+  },
+  {
+   "from": "proposal_verifier",
+   "to": "test_proposal_loop",
+   "relation": "vetoes",
+   "artifact": "proposal-rejections"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "ci-verdict"
+  },
+  {
+   "from": "arbiter",
+   "to": "fix_loop",
+   "relation": "arbitrates",
+   "artifact": "arbitration-ruling: conflicting veto reasons ordered by priority_policy"
+  },
+  {
+   "from": "arbiter",
+   "to": "test_proposal_loop",
+   "relation": "arbitrates",
+   "artifact": "arbitration-ruling: proposal conflicts ordered by priority_policy"
+  },
+  {
+   "from": "proposal_verifier",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "proposal-verdict"
+  },
+  {
+   "from": "integrity_counter",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "integrity-findings"
+  },
+  {
+   "from": "arbiter",
+   "to": "bruce_gate",
+   "relation": "escalates",
+   "artifact": "merge-recommendation"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "bruce_gate",
+   "relation": "constrains",
+   "artifact": "ci-verdict"
+  },
+  {
+   "from": "integrity_counter",
+   "to": "bruce_gate",
+   "relation": "vetoes",
+   "artifact": "integrity-findings"
+  },
+  {
+   "from": "bruce_gate",
+   "to": "merge_main",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "ci_verifier",
+   "to": "merge_main",
+   "relation": "vetoes",
+   "artifact": "ci-verdict"
+  },
+  {
+   "from": "merge_main",
+   "to": "weekly_audit",
+   "relation": "feeds",
+   "artifact": "merge-history"
+  },
+  {
+   "from": "integrity_counter",
+   "to": "weekly_audit",
+   "relation": "feeds",
+   "artifact": "integrity-findings"
+  },
+  {
+   "from": "weekly_audit",
+   "to": "bruce_gate",
+   "relation": "escalates",
+   "artifact": "audit-report"
+  },
+  {
+   "from": "weekly_audit",
+   "to": "governance",
+   "relation": "feeds",
+   "artifact": "audit-report"
+  },
+  {
+   "from": "governance",
+   "to": "bruce_gate",
+   "relation": "escalates",
+   "artifact": "governance-proposal"
+  },
+  {
+   "from": "bruce_gate",
+   "to": "protected_suite_anchor",
+   "relation": "revises",
+   "artifact": "approved promotion of proposed tests / suite change record"
+  },
+  {
+   "from": "bruce_gate",
+   "to": "ci_runner_anchor",
+   "relation": "revises",
+   "artifact": "approved CI config change record"
+  },
+  {
+   "from": "bruce_gate",
+   "to": "governance",
+   "relation": "revises",
+   "artifact": "approved thresholds and targets"
+  },
+  {
+   "from": "merge_main",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "merged-commit"
+  },
+  {
+   "from": "fix_loop",
+   "to": "stop_handoff",
+   "relation": "escalates",
+   "artifact": "escalation-report: unfixable after max_iterations"
+  },
+  {
+   "from": "test_proposal_loop",
+   "to": "stop_handoff",
+   "relation": "escalates",
+   "artifact": "escalation-report: proposals exhausted"
+  },
+  {
+   "from": "bruce_gate",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "approval-record / rejection"
+  }
+ ]
+}

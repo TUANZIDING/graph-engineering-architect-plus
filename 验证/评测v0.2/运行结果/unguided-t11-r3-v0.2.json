@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.1",
+  "title": "Meta 分析数据提取与合并复核控制架构（40 篇文献）",
+  "mode": "graph",
+  "rationale": "原流程的'复核'是循环互证：Agent B 只读 Agent A 的提取表重跑合并，两边一致只证明计算可复现，不能证明效应量/样本量从原文抄对（A 的提取错误会被 B 原样继承）。真正的风险在'原文→提取表'这一步，需要以原文 PDF 为锚点、由不看 A 结果的独立提取者双人提取、差异仲裁、再独立重算合并，并由人在写入论文前把关。存在多角色、独立证据源、仲裁与人工门控，因此为 graph；差异复核有上限回合，作为节点内 verification_loop 处理，不需要整体 graph_plus_loop。",
+  "state": "proposed",
+  "root_goal": {
+    "statement": "从 40 篇纳入文献中准确提取效应量与样本量，得到可追溯、经独立复核的合并分析结果，并写入论文。",
+    "human_owner": "Bruce",
+    "observable_success": "每个提取数值都有原文页码/表格位置定位；两名独立提取者对全部 40 篇的一致率与分歧仲裁记录完整；独立重算的合并效应量、CI、异质性与主分析在预设容差内一致；Bruce 抽查签字后才写入论文。",
+    "metrics": ["extraction_agreement_rate", "source_traceability_rate", "pooled_estimate_reproducibility", "unresolved_discrepancy_count"]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": ["读取纳入文献原文 PDF", "填写提取表", "运行合并分析脚本", "生成差异报告与仲裁记录", "起草结果段落草稿"],
+    "forbidden_actions": ["未经 Bruce 签字将结果写入论文正文", "修改预注册方案/纳入排除标准", "为使结果一致而修改另一方的提取表", "在原文未报告时臆造或推算数值而不标注", "删除分歧记录"]
+  },
+  "frozen_rules": [
+    "原文 PDF 是唯一数据锚点；'两个 agent 结果一致'不构成复核。",
+    "独立提取者 B 不得读取 A 的提取表，只能读原文与冻结的提取规程。",
+    "提取规程（效应量类型、首选结局、时间点、多臂处理、换算公式）在提取开始前冻结，提取中途不可修改。",
+    "每个数值必须记录来源位置（页码/表号/图号），否则视为未提取。",
+    "合并分析模型、软件、容差在提取前预设；重算方不得调整参数以凑一致。",
+    "提取表只有一个写者（reducer 节点），A/B 各自写独立草稿。"
+  ],
+  "approval": {"status": "pending"},
+  "budget": {"max_agents": 6, "max_concurrency": 2, "max_retries": 2, "max_cost_units": 100},
+  "failure_policy": "差异率超过 10% 或第二轮仲裁后仍有未解决分歧时停止，交 Bruce；原文数据缺失或不可判读的研究标注并交 Bruce 决定是否联系作者或剔除；重算结果超容差时不写入论文，回到差异定位。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": ["未解决分歧 > 0 且已达仲裁上限", "原文数据缺失/需换算假设", "重算与主分析不一致超出容差", "规程本身需修改", "准备写入论文前"],
+    "artifact": "复核包：最终提取表（含来源定位）、双提取差异与仲裁日志、独立重算报告、未决问题清单"
+  },
+  "execution_contract": {"external_execution": false},
+  "external_inputs": ["40 篇纳入文献原文 PDF", "预注册方案/纳入排除标准"],
+  "anchors": [
+    {
+      "node_id": "anchor_source_pdfs",
+      "source": "40 篇纳入文献原文 PDF（含补充材料）",
+      "evidence_form": "原文页码/表格/图中的原始报告数值",
+      "owner": "Bruce",
+      "freshness_rule": "以纳入时下载的版本为准；如有勘误/撤稿需重新确认",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_protocol",
+      "source": "冻结的提取规程与预设分析计划",
+      "evidence_form": "版本化规程文档",
+      "owner": "Bruce",
+      "freshness_rule": "提取开始前冻结，变更需 Bruce 批准并重提取受影响项",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {"id": "anchor_source_pdfs", "kind": "anchor", "responsibility": "提供原文证据锚点", "owner": "Bruce", "contract": {"inputs": ["40 篇纳入文献原文 PDF"], "outputs": ["source_pdfs"]}, "side_effect": "none"},
+    {"id": "anchor_protocol", "kind": "anchor", "responsibility": "提供冻结的提取规程与分析计划", "owner": "Bruce", "contract": {"inputs": ["预注册方案/纳入排除标准"], "outputs": ["extraction_protocol", "analysis_plan"]}, "side_effect": "none"},
+    {"id": "gate_protocol", "kind": "human_gate", "responsibility": "Bruce 确认规程与分析计划冻结后才启动提取", "owner": "Bruce", "contract": {"inputs": ["extraction_protocol", "analysis_plan"], "outputs": ["protocol_approval"]}, "cadence_tier": "human", "side_effect": "none"},
+    {"id": "extract_a", "kind": "execution", "responsibility": "Agent A 按规程从原文提取效应量、样本量并标注来源位置", "owner": "Agent A", "contract": {"inputs": ["source_pdfs", "extraction_protocol", "protocol_approval"], "outputs": ["draft_table_a"]}, "evidence_sources": ["source_pdfs"], "writes": ["draft_table_a"], "side_effect": "internal-reversible"},
+    {"id": "extract_b", "kind": "execution", "responsibility": "Agent B 不看 A 的表，独立从原文双提取并标注来源位置", "owner": "Agent B", "contract": {"inputs": ["source_pdfs", "extraction_protocol", "protocol_approval"], "outputs": ["draft_table_b"]}, "context_scope": "fresh-independent", "evidence_sources": ["source_pdfs"], "writes": ["draft_table_b"], "side_effect": "internal-reversible"},
+    {"id": "discrepancy_check", "kind": "verification_loop", "responsibility": "逐研究逐字段比对 A/B，生成差异清单；对差异回到原文核对（不以多数或任一方为准）", "owner": "Agent C (verifier)", "contract": {"inputs": ["draft_table_a", "draft_table_b", "source_pdfs"], "outputs": ["discrepancy_report"]}, "max_iterations": 2, "context_scope": "fresh-independent", "evidence_sources": ["source_pdfs", "draft_table_a", "draft_table_b"], "optimizes": "extraction_agreement_rate", "side_effect": "none"},
+    {"id": "source_trace_audit", "kind": "counter_metric_loop", "responsibility": "反制'一致率'指标：随机抽查一致项（含 A/B 都一致的）回溯原文定位，检测共同错误（如同时选错时间点/结局、SE 误作 SD）", "owner": "Agent D (auditor)", "contract": {"inputs": ["draft_table_a", "draft_table_b", "source_pdfs", "extraction_protocol"], "outputs": ["trace_audit_report"]}, "max_iterations": 1, "context_scope": "fresh-independent", "evidence_sources": ["source_pdfs"], "optimizes": "source_traceability_rate", "side_effect": "none"},
+    {"id": "arbitration", "kind": "arbitration", "responsibility": "对差异和审计发现依据原文与规程裁决最终值，记录理由；无法裁决的升级给 Bruce", "owner": "Agent C (verifier)", "contract": {"inputs": ["discrepancy_report", "trace_audit_report", "source_pdfs", "extraction_protocol"], "outputs": ["arbitration_log", "unresolved_items"]}, "priority_policy": "原文明确报告值 > 规程规定的换算值 > 需人判断（升级）", "evidence_sources": ["source_pdfs"], "side_effect": "none"},
+    {"id": "reconcile_table", "kind": "reducer", "responsibility": "唯一写者：按仲裁结果合成最终提取表（版本化、含来源定位与仲裁标记）", "owner": "Agent C (verifier)", "contract": {"inputs": ["draft_table_a", "draft_table_b", "arbitration_log"], "outputs": ["final_extraction_table"]}, "writes": ["final_extraction_table"], "side_effect": "internal-reversible"},
+    {"id": "pooled_analysis", "kind": "execution", "responsibility": "按预设计划在最终提取表上运行主合并分析（效应量、CI、异质性、敏感性）", "owner": "Agent A", "contract": {"inputs": ["final_extraction_table", "analysis_plan"], "outputs": ["primary_results"]}, "evidence_sources": ["final_extraction_table"], "writes": ["primary_results"], "side_effect": "internal-reversible"},
+    {"id": "independent_recompute", "kind": "verification_loop", "responsibility": "用独立代码/软件按同一预设计划重算，比较在容差内是否一致；仅证明计算可复现，不替代提取复核", "owner": "Agent E (recompute)", "contract": {"inputs": ["final_extraction_table", "analysis_plan", "primary_results"], "outputs": ["recompute_report"]}, "max_iterations": 2, "context_scope": "fresh-independent", "evidence_sources": ["final_extraction_table", "analysis_plan"], "optimizes": "pooled_estimate_reproducibility", "side_effect": "none"},
+    {"id": "synthesis_package", "kind": "synthesis", "responsibility": "汇总复核包与结果段落草稿，列出未决问题", "owner": "Agent E (recompute)", "contract": {"inputs": ["final_extraction_table", "arbitration_log", "unresolved_items", "trace_audit_report", "primary_results", "recompute_report"], "outputs": ["review_package", "results_draft"]}, "side_effect": "none"},
+    {"id": "gate_bruce_signoff", "kind": "human_gate", "responsibility": "Bruce 审阅复核包、处理未决项、抽查若干研究原文后签字，才允许写入论文", "owner": "Bruce", "contract": {"inputs": ["review_package", "results_draft"], "outputs": ["signoff_decision"]}, "cadence_tier": "human", "side_effect": "none"},
+    {"id": "stop_handoff_node", "kind": "stop_handoff", "responsibility": "触发停止条件时打包交接给 Bruce", "owner": "Bruce", "contract": {"inputs": ["unresolved_items", "recompute_report", "trace_audit_report"], "outputs": ["handoff_package"]}, "side_effect": "none"},
+    {"id": "write_manuscript", "kind": "execution", "responsibility": "签字通过后将结果写入论文（Bruce 执行或授权）", "owner": "Bruce", "contract": {"inputs": ["signoff_decision", "results_draft"], "outputs": ["manuscript_results_section"]}, "writes": ["manuscript_results_section"], "side_effect": "high-risk"}
+  ],
+  "edges": [
+    {"from": "anchor_protocol", "to": "gate_protocol", "relation": "feeds", "artifact": "extraction_protocol"},
+    {"from": "gate_protocol", "to": "extract_a", "relation": "constrains", "artifact": "protocol_approval"},
+    {"from": "gate_protocol", "to": "extract_b", "relation": "constrains", "artifact": "protocol_approval"},
+    {"from": "anchor_source_pdfs", "to": "extract_a", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "anchor_source_pdfs", "to": "extract_b", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "anchor_protocol", "to": "extract_a", "relation": "constrains", "artifact": "extraction_protocol"},
+    {"from": "anchor_protocol", "to": "extract_b", "relation": "constrains", "artifact": "extraction_protocol"},
+    {"from": "extract_a", "to": "discrepancy_check", "relation": "feeds", "artifact": "draft_table_a"},
+    {"from": "extract_b", "to": "discrepancy_check", "relation": "feeds", "artifact": "draft_table_b"},
+    {"from": "anchor_source_pdfs", "to": "discrepancy_check", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "extract_a", "to": "source_trace_audit", "relation": "feeds", "artifact": "draft_table_a"},
+    {"from": "extract_b", "to": "source_trace_audit", "relation": "feeds", "artifact": "draft_table_b"},
+    {"from": "anchor_source_pdfs", "to": "source_trace_audit", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "discrepancy_check", "to": "arbitration", "relation": "feeds", "artifact": "discrepancy_report"},
+    {"from": "source_trace_audit", "to": "arbitration", "relation": "feeds", "artifact": "trace_audit_report"},
+    {"from": "anchor_source_pdfs", "to": "arbitration", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "arbitration", "to": "extract_a", "relation": "revises", "artifact": "arbitration_log"},
+    {"from": "arbitration", "to": "extract_b", "relation": "revises", "artifact": "arbitration_log"},
+    {"from": "arbitration", "to": "reconcile_table", "relation": "feeds", "artifact": "arbitration_log"},
+    {"from": "arbitration", "to": "stop_handoff_node", "relation": "escalates", "artifact": "unresolved_items"},
+    {"from": "reconcile_table", "to": "pooled_analysis", "relation": "feeds", "artifact": "final_extraction_table"},
+    {"from": "anchor_protocol", "to": "pooled_analysis", "relation": "constrains", "artifact": "analysis_plan"},
+    {"from": "reconcile_table", "to": "independent_recompute", "relation": "feeds", "artifact": "final_extraction_table"},
+    {"from": "anchor_protocol", "to": "independent_recompute", "relation": "constrains", "artifact": "analysis_plan"},
+    {"from": "pooled_analysis", "to": "independent_recompute", "relation": "feeds", "artifact": "primary_results"},
+    {"from": "independent_recompute", "to": "pooled_analysis", "relation": "verifies", "artifact": "recompute_report"},
+    {"from": "independent_recompute", "to": "stop_handoff_node", "relation": "escalates", "artifact": "recompute_report"},
+    {"from": "source_trace_audit", "to": "stop_handoff_node", "relation": "escalates", "artifact": "trace_audit_report"},
+    {"from": "independent_recompute", "to": "synthesis_package", "relation": "feeds", "artifact": "recompute_report"},
+    {"from": "reconcile_table", "to": "synthesis_package", "relation": "feeds", "artifact": "final_extraction_table"},
+    {"from": "pooled_analysis", "to": "synthesis_package", "relation": "feeds", "artifact": "primary_results"},
+    {"from": "synthesis_package", "to": "gate_bruce_signoff", "relation": "feeds", "artifact": "review_package"},
+    {"from": "stop_handoff_node", "to": "gate_bruce_signoff", "relation": "hands_off", "artifact": "handoff_package"},
+    {"from": "gate_bruce_signoff", "to": "write_manuscript", "relation": "vetoes", "artifact": "signoff_decision"},
+    {"from": "synthesis_package", "to": "write_manuscript", "relation": "feeds", "artifact": "results_draft"}
+  ]
+}

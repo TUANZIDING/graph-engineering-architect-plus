@@ -1,0 +1,33 @@
+{
+ "schema_version": "1.1",
+ "title": "AI 写综述",
+ "mode": "linear_workflow",
+ "nodes": [
+  {
+   "id": "search",
+   "kind": "execution"
+  },
+  {
+   "id": "write",
+   "kind": "execution"
+  },
+  {
+   "id": "polish",
+   "kind": "execution"
+  }
+ ],
+ "edges": [
+  {
+   "from": "search",
+   "to": "write",
+   "relation": "feeds",
+   "artifact": "papers"
+  },
+  {
+   "from": "write",
+   "to": "polish",
+   "relation": "feeds",
+   "artifact": "draft"
+  }
+ ]
+}

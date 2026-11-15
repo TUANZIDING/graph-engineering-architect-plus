@@ -1,0 +1,280 @@
+{
+ "schema_version": "1.1",
+ "title": "急诊休克预警阈值持续优化",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "减少漏诊休克而不制造不可承受的报警负担",
+  "human_owner": "Bruce",
+  "observable_success": "经病历复核确诊的休克漏报率下降，且每床每班报警数不超过委员会设定上限，委员会批准上线",
+  "metrics": [
+   "missed_shock_rate",
+   "alarms_per_bed_shift"
+  ]
+ },
+ "external_inputs": [
+  "chart-review",
+  "vitals-history",
+  "alarm-log",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "离线回顾性模拟新阈值",
+   "生成阈值建议报告"
+  ],
+  "forbidden_actions": [
+   "直接修改线上阈值",
+   "修改结局标注"
+  ]
+ },
+ "frozen_rules": [
+  "线上阈值只能经医疗质量委员会批准修改",
+  "结局标注由病历复核小组完成，调参 Agent 不可改"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "漏报增加",
+   "报警量超上限",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "outcomes",
+   "source": "病历复核确诊的休克结局（由复核小组独立标注）",
+   "evidence_form": "复核表与确诊记录",
+   "owner": "复核小组",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "outcomes",
+   "kind": "anchor",
+   "responsibility": "冻结的病历复核结局",
+   "owner": "复核小组",
+   "contract": {
+    "inputs": [
+     "chart-review"
+    ],
+    "outputs": [
+     "confirmed-outcomes"
+    ]
+   }
+  },
+  {
+   "id": "tune",
+   "kind": "execution_loop",
+   "responsibility": "离线模拟并提出新阈值",
+   "owner": "调参 Agent",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "vitals-history"
+    ],
+    "outputs": [
+     "threshold-proposal"
+    ]
+   },
+   "optimizes": "missed_shock_rate",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "vitals-history"
+   ],
+   "writes": [
+    "proposals/"
+   ]
+  },
+  {
+   "id": "sens-check",
+   "kind": "verification_loop",
+   "responsibility": "用复核结局独立计算敏感度与漏诊",
+   "owner": "质控统计员",
+   "contract": {
+    "inputs": [
+     "threshold-proposal",
+     "confirmed-outcomes"
+    ],
+    "outputs": [
+     "sensitivity-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "confirmed-outcomes"
+   ]
+  },
+  {
+   "id": "alarm-burden",
+   "kind": "counter_metric_loop",
+   "responsibility": "监测误报率与每床每班报警量，防报警疲劳",
+   "owner": "护理质控",
+   "contract": {
+    "inputs": [
+     "threshold-proposal"
+    ],
+    "outputs": [
+     "burden-report"
+    ]
+   },
+   "max_iterations": 1,
+   "evidence_sources": [
+    "alarm-log"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "敏感度与报警负担冲突时裁决",
+   "owner": "急诊科主任",
+   "contract": {
+    "inputs": [
+     "sensitivity-report",
+     "burden-report"
+    ],
+    "outputs": [
+     "recommendation"
+    ]
+   },
+   "priority_policy": "不增加确诊漏报 > 报警负担上限 > 敏感度增量"
+  },
+  {
+   "id": "committee",
+   "kind": "human_gate",
+   "responsibility": "医疗质量委员会审批阈值上线",
+   "owner": "医疗质量委员会",
+   "contract": {
+    "inputs": [
+     "recommendation"
+    ],
+    "outputs": [
+     "deploy-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "tune",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "outcomes",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "outcomes",
+   "to": "sens-check",
+   "relation": "anchors",
+   "artifact": "confirmed-outcomes"
+  },
+  {
+   "from": "tune",
+   "to": "sens-check",
+   "relation": "feeds",
+   "artifact": "threshold-proposal"
+  },
+  {
+   "from": "tune",
+   "to": "alarm-burden",
+   "relation": "feeds",
+   "artifact": "threshold-proposal"
+  },
+  {
+   "from": "alarm-burden",
+   "to": "tune",
+   "relation": "observes",
+   "artifact": "burden-report"
+  },
+  {
+   "from": "sens-check",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "sensitivity-report"
+  },
+  {
+   "from": "alarm-burden",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "burden-report"
+  },
+  {
+   "from": "sens-check",
+   "to": "committee",
+   "relation": "vetoes",
+   "artifact": "sensitivity-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "committee",
+   "relation": "constrains",
+   "artifact": "recommendation"
+  },
+  {
+   "from": "committee",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "deploy-decision"
+  }
+ ]
+}

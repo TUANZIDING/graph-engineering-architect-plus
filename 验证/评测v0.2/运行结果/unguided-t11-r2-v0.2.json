@@ -1,0 +1,207 @@
+{
+  "schema_version": "1.1",
+  "title": "Meta 分析数据提取与复核控制架构（40 篇文献）",
+  "mode": "graph_plus_loop",
+  "rationale": "原流程的“复核”是循环互证：Agent B 读取 Agent A 的提取表重跑合并分析，只能验证计算可复现，不能发现提取错误（效应量方向、SD/SE 混淆、样本量取 ITT 还是完成者、多臂重复计数、子组误取等），两边一致只说明同一份错误数据被算了两遍。必须把复核锚定到原始文献：双人独立提取（各自读 PDF、互不可见）→ 字段级比对 → 分歧回原文仲裁的有界循环；分析层另做独立实现复算；再以人工随机抽样回原文作为反指标，防止只优化‘一致率’。存在多个并行提取者、仲裁、独立验证和人工门，且含有界修订循环，故为 graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "从 40 篇纳入文献中准确提取效应量与样本量，完成可溯源、经独立复核的合并分析，并将结果写入论文",
+    "human_owner": "Bruce",
+    "observable_success": "每个提取值都有原文定位（页码/表格/图）和双人独立提取记录；所有分歧已回原文仲裁并留痕；Bruce 随机抽查 ≥20% 研究（至少 8 篇）回原文核对零关键错误；两套独立实现的合并估计、95%CI、I² 在预设容差内一致；结果经 Bruce 批准后才写入论文",
+    "metrics": ["extraction_agreement_rate", "source_spotcheck_error_rate", "pooled_estimate_reproducibility", "provenance_coverage"]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": ["read_included_pdfs", "write_own_extraction_table", "compute_field_level_diff", "run_meta_analysis_in_sandbox", "draft_results_section", "request_human_arbitration"],
+    "forbidden_actions": ["read_other_extractor_table_before_lock", "edit_locked_extraction_table_without_arbitration_record", "impute_or_estimate_values_without_logged_method", "change_inclusion_list_or_protocol", "write_results_into_manuscript_without_bruce_approval", "submit_or_share_manuscript"]
+  },
+  "frozen_rules": [
+    "纳入文献清单（40 篇）与预注册提取表模板/编码规则在提取开始前冻结，改动需 Bruce 批准并重启受影响研究的提取",
+    "复核者不得以另一提取者的表格作为证据来源；验证证据只能来自原始文献",
+    "每个数值必须附原文定位（页码 + 表/图/正文段落）与是否经换算（SE→SD、中位数→均值等）及换算方法",
+    "效应量方向、比较组、时间点、分析人群（ITT/PP）按协议统一，冲突时以协议为准",
+    "多臂研究按协议拆分或合并对照组，禁止重复计数共享对照组",
+    "仅凭两次计算结果一致不得视为数据已复核",
+    "结果写入论文前必须经 Bruce 人工批准"
+  ],
+  "approval": {"status": "pending"},
+  "budget": {"max_agents": 6, "max_concurrency": 2, "max_retries": 3, "max_cost_units": 100},
+  "failure_policy": "任一研究分歧经 3 轮仲裁循环未解决、原文信息缺失无法提取、抽查发现关键错误率 >0、或两套分析实现超出容差时，停止推进该部分并升级给 Bruce；不得用猜测值或删除研究来‘消除’分歧（排除研究需按协议记录理由并做敏感性分析）",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "某研究分歧达到 max_iterations 仍未解决",
+      "人工抽查发现任何关键字段错误（效应方向、样本量、SD/SE、比较组）",
+      "独立复算的合并估计/CI/I² 超出预设容差",
+      "需要修改纳入清单、协议或提取规则",
+      "预算耗尽"
+    ],
+    "artifact": "handoff 包：当前锁定提取表、分歧与仲裁日志、未解决项清单及原文定位、两套分析输出与差异报告"
+  },
+  "execution_contract": {"external_execution": false},
+  "anchors": [
+    {
+      "node_id": "anchor_sources",
+      "source": "40 篇纳入文献原文 PDF（含补充材料）",
+      "evidence_form": "原文页码/表格/图中的原始数值",
+      "owner": "Bruce",
+      "freshness_rule": "以纳入时下载的版本为准；如有勘误/撤稿需重新核对该研究",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_protocol",
+      "source": "预注册方案与提取表模板（编码规则、效应量定义、人群/时间点优先级、换算方法、分析模型与容差）",
+      "evidence_form": "冻结的协议文档版本号",
+      "owner": "Bruce",
+      "freshness_rule": "提取开始前冻结，任何修订需 Bruce 批准并记录版本",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_sources", "kind": "anchor", "owner": "Bruce",
+      "responsibility": "提供冻结的 40 篇原文作为唯一事实来源",
+      "contract": {"inputs": [], "outputs": ["source_pdfs"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_protocol", "kind": "anchor", "owner": "Bruce",
+      "responsibility": "提供冻结的协议与提取规则",
+      "contract": {"inputs": [], "outputs": ["protocol_and_template"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "extract_a", "kind": "execution", "owner": "Agent A",
+      "responsibility": "按协议从原文独立提取效应量、样本量及所需统计量，每值附原文定位与换算记录",
+      "contract": {"inputs": ["source_pdfs", "protocol_and_template"], "outputs": ["extraction_table_a"]},
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_pdfs", "protocol_and_template"],
+      "side_effect": "internal-reversible",
+      "writes": ["extraction_table_a"]
+    },
+    {
+      "id": "extract_b", "kind": "execution", "owner": "Agent B",
+      "responsibility": "（替代原‘读 A 表重跑’）在看不到 A 表的前提下，从原文独立完成第二套提取，每值附原文定位",
+      "contract": {"inputs": ["source_pdfs", "protocol_and_template"], "outputs": ["extraction_table_b"]},
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_pdfs", "protocol_and_template"],
+      "side_effect": "internal-reversible",
+      "writes": ["extraction_table_b"]
+    },
+    {
+      "id": "diff_reducer", "kind": "reducer", "owner": "Agent C (comparator)",
+      "responsibility": "两表锁定后做字段级比对（含方向、单位、人群、时间点、组别），输出分歧清单与一致率",
+      "contract": {"inputs": ["extraction_table_a", "extraction_table_b"], "outputs": ["discrepancy_list", "agreement_report"]},
+      "evidence_sources": ["extraction_table_a", "extraction_table_b"],
+      "side_effect": "none",
+      "writes": ["discrepancy_list"]
+    },
+    {
+      "id": "adjudication_loop", "kind": "verification_loop", "owner": "Agent D (adjudicator)",
+      "responsibility": "对每条分歧回原文定位核对并按协议裁定，形成唯一的锁定提取表；无法裁定者升级 Bruce；每条分歧最多 3 轮",
+      "contract": {"inputs": ["discrepancy_list", "source_pdfs", "protocol_and_template"], "outputs": ["locked_extraction_table", "adjudication_log", "unresolved_items"]},
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_pdfs", "protocol_and_template"],
+      "side_effect": "internal-reversible",
+      "writes": ["locked_extraction_table", "adjudication_log"]
+    },
+    {
+      "id": "plausibility_audit", "kind": "audit_loop", "owner": "Agent C (comparator)",
+      "responsibility": "对锁定表做规则审计：SD/SE 混淆、样本量与基线表不符、多臂重复计数、效应方向不统一、离群值与异常小 SD；疑点回送仲裁",
+      "contract": {"inputs": ["locked_extraction_table", "protocol_and_template"], "outputs": ["audit_flags"]},
+      "max_iterations": 2,
+      "evidence_sources": ["locked_extraction_table", "protocol_and_template"],
+      "side_effect": "none"
+    },
+    {
+      "id": "spotcheck_counter", "kind": "counter_metric_loop", "owner": "Bruce",
+      "responsibility": "反指标：防止只追求双人一致率（两人可能同错）。Bruce 随机抽取 ≥20% 研究（至少 8 篇）及全部高权重研究，直接对照原文核对锁定值",
+      "contract": {"inputs": ["locked_extraction_table", "source_pdfs", "agreement_report"], "outputs": ["spotcheck_report"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["source_pdfs"],
+      "optimizes": "source_spotcheck_error_rate",
+      "side_effect": "none"
+    },
+    {
+      "id": "analysis_primary", "kind": "execution", "owner": "Agent E (analyst)",
+      "responsibility": "基于锁定表按预设模型执行合并分析、异质性、敏感性、发表偏倚分析，脚本与版本留存",
+      "contract": {"inputs": ["locked_extraction_table", "protocol_and_template", "spotcheck_report"], "outputs": ["primary_results", "analysis_code"]},
+      "evidence_sources": ["locked_extraction_table", "protocol_and_template"],
+      "side_effect": "internal-reversible",
+      "writes": ["primary_results", "analysis_code"]
+    },
+    {
+      "id": "analysis_replication", "kind": "verification_loop", "owner": "Agent F (replicator)",
+      "responsibility": "不看主分析代码，仅凭协议与锁定表用另一实现（不同软件/包）独立复算；只证明计算可复现，不作为数据复核",
+      "contract": {"inputs": ["locked_extraction_table", "protocol_and_template", "primary_results"], "outputs": ["replication_diff_report"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["locked_extraction_table", "protocol_and_template"],
+      "side_effect": "none",
+      "writes": ["replication_diff_report"]
+    },
+    {
+      "id": "draft_results", "kind": "synthesis", "owner": "Agent E (analyst)",
+      "responsibility": "起草结果段、森林图、PRISMA 数据流与提取/仲裁方法描述（含双人独立提取与一致率），不直接写入论文主稿",
+      "contract": {"inputs": ["primary_results", "replication_diff_report", "adjudication_log", "spotcheck_report"], "outputs": ["results_draft"]},
+      "side_effect": "internal-reversible",
+      "writes": ["results_draft"]
+    },
+    {
+      "id": "bruce_gate", "kind": "human_gate", "owner": "Bruce",
+      "responsibility": "审核溯源完整性、仲裁日志、抽查与复算报告和结果草稿，批准后才写入论文",
+      "contract": {"inputs": ["results_draft", "adjudication_log", "spotcheck_report", "replication_diff_report", "unresolved_items"], "outputs": ["approval_decision"]},
+      "side_effect": "high-risk",
+      "writes": ["manuscript_results_section"]
+    },
+    {
+      "id": "stop_handoff_node", "kind": "stop_handoff", "owner": "Bruce",
+      "responsibility": "触发停止条件时打包现状交给 Bruce",
+      "contract": {"inputs": ["unresolved_items", "spotcheck_report", "replication_diff_report"], "outputs": ["handoff_package"]},
+      "side_effect": "none"
+    }
+  ],
+  "edges": [
+    {"from": "anchor_sources", "to": "extract_a", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "anchor_sources", "to": "extract_b", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "anchor_protocol", "to": "extract_a", "relation": "constrains", "artifact": "protocol_and_template"},
+    {"from": "anchor_protocol", "to": "extract_b", "relation": "constrains", "artifact": "protocol_and_template"},
+    {"from": "extract_a", "to": "diff_reducer", "relation": "feeds", "artifact": "extraction_table_a"},
+    {"from": "extract_b", "to": "diff_reducer", "relation": "feeds", "artifact": "extraction_table_b"},
+    {"from": "diff_reducer", "to": "adjudication_loop", "relation": "feeds", "artifact": "discrepancy_list"},
+    {"from": "anchor_sources", "to": "adjudication_loop", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "anchor_protocol", "to": "adjudication_loop", "relation": "constrains", "artifact": "protocol_and_template"},
+    {"from": "adjudication_loop", "to": "plausibility_audit", "relation": "feeds", "artifact": "locked_extraction_table"},
+    {"from": "anchor_protocol", "to": "plausibility_audit", "relation": "constrains", "artifact": "protocol_and_template"},
+    {"from": "plausibility_audit", "to": "adjudication_loop", "relation": "revises", "artifact": "audit_flags"},
+    {"from": "adjudication_loop", "to": "spotcheck_counter", "relation": "feeds", "artifact": "locked_extraction_table"},
+    {"from": "diff_reducer", "to": "spotcheck_counter", "relation": "observes", "artifact": "agreement_report"},
+    {"from": "anchor_sources", "to": "spotcheck_counter", "relation": "anchors", "artifact": "source_pdfs"},
+    {"from": "spotcheck_counter", "to": "adjudication_loop", "relation": "revises", "artifact": "spotcheck_report"},
+    {"from": "spotcheck_counter", "to": "analysis_primary", "relation": "verifies", "artifact": "spotcheck_report"},
+    {"from": "adjudication_loop", "to": "analysis_primary", "relation": "feeds", "artifact": "locked_extraction_table"},
+    {"from": "anchor_protocol", "to": "analysis_primary", "relation": "constrains", "artifact": "protocol_and_template"},
+    {"from": "adjudication_loop", "to": "analysis_replication", "relation": "feeds", "artifact": "locked_extraction_table"},
+    {"from": "anchor_protocol", "to": "analysis_replication", "relation": "constrains", "artifact": "protocol_and_template"},
+    {"from": "analysis_primary", "to": "analysis_replication", "relation": "verifies", "artifact": "primary_results"},
+    {"from": "analysis_replication", "to": "analysis_primary", "relation": "revises", "artifact": "replication_diff_report"},
+    {"from": "analysis_primary", "to": "draft_results", "relation": "feeds", "artifact": "primary_results"},
+    {"from": "analysis_replication", "to": "draft_results", "relation": "feeds", "artifact": "replication_diff_report"},
+    {"from": "adjudication_loop", "to": "draft_results", "relation": "feeds", "artifact": "adjudication_log"},
+    {"from": "spotcheck_counter", "to": "draft_results", "relation": "feeds", "artifact": "spotcheck_report"},
+    {"from": "draft_results", "to": "bruce_gate", "relation": "feeds", "artifact": "results_draft"},
+    {"from": "adjudication_loop", "to": "bruce_gate", "relation": "feeds", "artifact": "unresolved_items"},
+    {"from": "spotcheck_counter", "to": "bruce_gate", "relation": "vetoes", "artifact": "spotcheck_report"},
+    {"from": "adjudication_loop", "to": "stop_handoff_node", "relation": "escalates", "artifact": "unresolved_items"},
+    {"from": "spotcheck_counter", "to": "stop_handoff_node", "relation": "escalates", "artifact": "spotcheck_report"},
+    {"from": "analysis_replication", "to": "stop_handoff_node", "relation": "escalates", "artifact": "replication_diff_report"},
+    {"from": "bruce_gate", "to": "stop_handoff_node", "relation": "hands_off", "artifact": "approval_decision"}
+  ],
+  "external_inputs": []
+}

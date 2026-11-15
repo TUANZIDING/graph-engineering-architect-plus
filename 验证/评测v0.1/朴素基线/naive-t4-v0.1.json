@@ -1,0 +1,42 @@
+{
+ "schema_version": "1.1",
+ "title": "满意度驱动出题",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "提高学生满意度",
+  "human_owner": "Bruce",
+  "observable_success": "满意度评分上升"
+ },
+ "nodes": [
+  {
+   "id": "gen",
+   "kind": "execution_loop",
+   "responsibility": "出题",
+   "optimizes": "满意度"
+  },
+  {
+   "id": "self-check",
+   "kind": "verification_loop",
+   "responsibility": "出题 Agent 自查格式"
+  },
+  {
+   "id": "pub",
+   "kind": "execution",
+   "responsibility": "自动发布"
+  }
+ ],
+ "edges": [
+  {
+   "from": "gen",
+   "to": "self-check",
+   "relation": "feeds",
+   "artifact": "items"
+  },
+  {
+   "from": "self-check",
+   "to": "pub",
+   "relation": "feeds",
+   "artifact": "items"
+  }
+ ]
+}

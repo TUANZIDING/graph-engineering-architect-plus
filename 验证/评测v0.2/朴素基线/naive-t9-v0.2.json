@@ -1,0 +1,48 @@
+{
+ "schema_version": "1.1",
+ "title": "提示词优化",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "提高与分诊标准的一致率",
+  "human_owner": "Bruce",
+  "observable_success": "一致率超过 95%"
+ },
+ "anchors": [
+  {
+   "node_id": "std",
+   "source": "科室胸痛分诊标准"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "std",
+   "kind": "anchor",
+   "responsibility": "科室分诊标准"
+  },
+  {
+   "id": "opt",
+   "kind": "execution_loop",
+   "responsibility": "改写提示词",
+   "optimizes": "agreement"
+  },
+  {
+   "id": "eval",
+   "kind": "verification_loop",
+   "responsibility": "计算一致率"
+  }
+ ],
+ "edges": [
+  {
+   "from": "std",
+   "to": "eval",
+   "relation": "anchors",
+   "artifact": "standard"
+  },
+  {
+   "from": "opt",
+   "to": "eval",
+   "relation": "feeds",
+   "artifact": "prompt"
+  }
+ ]
+}

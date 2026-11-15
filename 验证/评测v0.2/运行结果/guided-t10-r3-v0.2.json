@@ -1,0 +1,618 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊出院流程双 Agent 改进控制图",
+  "mode": "graph",
+  "state": "designed",
+  "root_goal": {
+    "statement": "在不增加患者伤害的前提下，改进急诊出院流程：同时缩短急诊滞留时间（ED LOS）并降低 72 小时非计划返诊率",
+    "human_owner": "Bruce",
+    "observable_success": "试行期（≥8 周、与基线同季节对照）内：EHR 时间戳计算的出院患者 ED LOS 中位数下降，且经区域健康信息平台核对的 72 小时非计划返诊率（含院外返诊）不升高或下降；返诊后 ICU 入住/7 天内死亡等不良结局不增加；任何清单/标准变更均有医疗主任签字记录",
+    "out_of_scope": [
+      "Agent 直接修改生产 EHR 出院医嘱、出院标准或流程清单",
+      "Agent 对单个患者做出院或留观临床决策",
+      "通过改变返诊/滞留的统计口径、分诊编码或计时起止点来改善指标",
+      "调整人员编制、排班或收治床位政策"
+    ],
+    "metrics": [
+      "ED LOS 中位数",
+      "72 小时非计划返诊率",
+      "返诊不良结局率",
+      "出院转住院率"
+    ]
+  },
+  "classification_rationale": "两个优化回路作用于同一共享变量（出院标准与流程清单）且目标天然拉扯：放宽出院可缩短滞留但抬高返诊，收紧出院可降低返诊但延长滞留或把患者收入院。两个指标都可被刷（改计时口径、把患者转住院、返诊流向他院不被计数），涉及患者安全的高风险副作用，需要独立现实锚点、反指标、单写者变更控制、事前仲裁优先级和人工签字门，单回路或线性流程不够。",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取去标识化的急诊就诊、时间戳与返诊数据",
+      "生成出院标准/流程清单的变更提案及预期影响分析",
+      "在模拟或回顾性数据上评估提案"
+    ],
+    "forbidden_actions": [
+      "直接写入生产出院标准或流程清单",
+      "修改指标定义、计时起止点、返诊口径或锚点数据",
+      "修改验证、反指标、审计节点的阈值或规则",
+      "绕过医疗主任签字上线任何变更",
+      "对个体患者给出出院决定"
+    ]
+  },
+  "frozen_rules": [
+    "ED LOS 定义：EHR 分诊登记时间至离开急诊时间，口径冻结",
+    "72 小时非计划返诊定义：出院后 72 小时内任一医疗机构（经区域健康信息平台）非预约急诊就诊，口径冻结",
+    "安全底线：返诊不良结局（ICU 入住、7 天内死亡、漏诊重大疾病）不得高于基线上界，越界即回滚",
+    "优先级：患者安全 > 72 小时返诊 > ED LOS",
+    "出院标准与流程清单只有部署节点一个写者，且只能凭医疗主任/Bruce 签字批准单写入",
+    "Agent 不得改写验证、反指标、审计和锚点的规则"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "failed": "安全底线越界或验证否决：回滚到上一签字版本清单，升级给 Bruce 与质控科",
+    "blocked": "锚点过期或区域返诊数据不可得：冻结所有变更提案，停在当前签字版本，通知 Bruce",
+    "budget_exhausted": "停止迭代，交付已验证提案与未决冲突清单给 Bruce"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: 试行期两项指标达到 observable_success 且安全底线未越界、锚点新鲜",
+      "failed: 安全底线越界或连续两版提案被否决",
+      "blocked: 锚点过期或独立返诊数据源中断",
+      "budget_exhausted: 迭代次数或成本用尽"
+    ],
+    "artifact": "handoff.md（当前签字清单版本、试行指标与锚点对照、未决冲突、回滚记录）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "患者安全底线 > 72 小时返诊率 > ED LOS；两 Agent 提案冲突时，先保证返诊与不良结局不劣于基线，再在剩余空间内缩短滞留；无法兼得时升级 Bruce 决定"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "Frozen-rule change",
+      "任何生产出院标准/清单上线"
+    ]
+  },
+  "verification": {
+    "independence_statement": "验证由质控科与独立统计脚本执行，评估者不同于两个优化 Agent；数据来源为 EHR 原始时间戳审计日志与区域健康信息平台返诊记录及病历抽样，而非 Agent 生成的报表；Agent 无写权限",
+    "checks": [
+      "verify_trial",
+      "counter_harm",
+      "audit_data"
+    ]
+  },
+  "external_inputs": [
+    "EHR 原始时间戳审计日志",
+    "区域健康信息平台返诊记录",
+    "返诊病历人工抽样",
+    "去标识化 LOS 数据",
+    "去标识化本院返诊数据"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_ehr_los",
+      "source": "EHR 原始分诊/离院时间戳审计日志（只读副本）",
+      "evidence_form": "按冻结口径计算的出院患者 ED LOS 分布",
+      "owner": "信息科",
+      "freshness_rule": "每周导出，超过 14 天未刷新视为过期",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-12"
+    },
+    {
+      "node_id": "anchor_returns",
+      "source": "区域健康信息平台跨院就诊记录 + 本院 EHR 返诊病历",
+      "evidence_form": "72 小时非计划返诊计数（含院外）及返诊后 ICU/死亡结局",
+      "owner": "质控科",
+      "freshness_rule": "每周核对，超过 14 天未刷新视为过期",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-12"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_ehr_los",
+      "kind": "anchor",
+      "responsibility": "提供 Agent 无法改写的 ED LOS 原始时间戳证据",
+      "owner": "信息科",
+      "cadence": "weekly",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "EHR 原始时间戳审计日志"
+        ],
+        "outputs": [
+          "LOS 锚点数据"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_audit_log"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_returns",
+      "kind": "anchor",
+      "responsibility": "提供含院外的 72 小时返诊与不良结局真实计数",
+      "owner": "质控科",
+      "cadence": "weekly",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "区域健康信息平台返诊记录",
+          "返诊病历人工抽样"
+        ],
+        "outputs": [
+          "返诊锚点数据"
+        ]
+      },
+      "evidence_sources": [
+        "regional_hie",
+        "chart_review"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "agent_los",
+      "kind": "execution_loop",
+      "responsibility": "分析滞留瓶颈，提出缩短 ED LOS 的出院标准/清单变更提案（只提案不写入）",
+      "owner": "AI Agent A（Bruce 监管）",
+      "cadence": "per iteration (daily)",
+      "cadence_tier": "fast",
+      "max_iterations": 6,
+      "contract": {
+        "inputs": [
+          "当前签字版清单",
+          "去标识化 LOS 数据",
+          "验证结论（通过/否决）"
+        ],
+        "outputs": [
+          "LOS 变更提案"
+        ]
+      },
+      "evidence_sources": [
+        "ed_ops_dashboard"
+      ],
+      "optimizes": "ED LOS 中位数",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "proposals/los"
+      ]
+    },
+    {
+      "id": "agent_return",
+      "kind": "execution_loop",
+      "responsibility": "分析返诊原因，提出降低 72 小时返诊率的出院标准/清单变更提案（只提案不写入）",
+      "owner": "AI Agent B（Bruce 监管）",
+      "cadence": "per iteration (daily)",
+      "cadence_tier": "fast",
+      "max_iterations": 6,
+      "contract": {
+        "inputs": [
+          "当前签字版清单",
+          "去标识化本院返诊数据",
+          "验证结论（通过/否决）"
+        ],
+        "outputs": [
+          "返诊变更提案"
+        ]
+      },
+      "evidence_sources": [
+        "ed_ops_dashboard"
+      ],
+      "optimizes": "72 小时非计划返诊率",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "proposals/return"
+      ]
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "合并两份提案，按冻结优先级解决冲突，形成单一候选清单版本",
+      "owner": "Bruce",
+      "cadence": "per candidate (weekly)",
+      "cadence_tier": "medium",
+      "priority_policy": "患者安全底线 > 72 小时返诊率 > ED LOS；冲突无法兼得时升级 Bruce",
+      "contract": {
+        "inputs": [
+          "LOS 变更提案",
+          "返诊变更提案"
+        ],
+        "outputs": [
+          "合并候选清单",
+          "冲突记录"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "candidates/merged"
+      ]
+    },
+    {
+      "id": "verify_trial",
+      "kind": "verification_loop",
+      "responsibility": "在回顾性数据与小范围试行中，用锚点数据独立判定候选版是否同时改善 LOS 且不恶化返诊",
+      "owner": "质控科 + 独立统计脚本",
+      "cadence": "per candidate (weekly)",
+      "cadence_tier": "medium",
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "合并候选清单",
+          "LOS 锚点数据",
+          "返诊锚点数据"
+        ],
+        "outputs": [
+          "验证结论（通过/否决）"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_audit_log",
+        "regional_hie"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "counter_harm",
+      "kind": "counter_metric_loop",
+      "responsibility": "专门拆穿便宜的胜利：返诊后 ICU/死亡、出院转住院率升高（把返诊转成收治）、返诊流向他院、离院前时间被拆到留观区等",
+      "owner": "质控科（病历抽样医生）",
+      "cadence": "per candidate (weekly)",
+      "cadence_tier": "medium",
+      "max_iterations": 3,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "合并候选清单",
+          "返诊锚点数据",
+          "LOS 锚点数据"
+        ],
+        "outputs": [
+          "反指标报告",
+          "否决意见"
+        ]
+      },
+      "evidence_sources": [
+        "chart_review",
+        "regional_hie",
+        "ehr_audit_log"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "audit_data",
+      "kind": "audit_loop",
+      "responsibility": "每月审计指标口径、计时点、编码与数据管道是否漂移或被间接操纵，检查锚点新鲜度",
+      "owner": "信息科 + 医务处",
+      "cadence": "monthly",
+      "cadence_tier": "slow",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "LOS 锚点数据",
+          "返诊锚点数据",
+          "变更日志"
+        ],
+        "outputs": [
+          "审计报告"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_audit_log",
+        "regional_hie"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "change_control",
+      "kind": "human_gate",
+      "responsibility": "医疗主任/Bruce 审阅候选版、验证结论、反指标与审计报告后签字批准或驳回",
+      "owner": "Bruce",
+      "cadence": "on demand",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "合并候选清单",
+          "验证结论（通过/否决）",
+          "反指标报告",
+          "审计报告"
+        ],
+        "outputs": [
+          "签字批准单"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "approvals/signoff"
+      ]
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "季度审视目标、优先级与安全底线是否仍合理；只可提议，修订须 Bruce 批准",
+      "owner": "Bruce + 急诊质量委员会",
+      "cadence": "quarterly",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "contract": {
+        "inputs": [
+          "审计报告",
+          "冲突记录"
+        ],
+        "outputs": [
+          "治理决议"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "stop",
+      "kind": "stop_handoff",
+      "responsibility": "按四态停止条件收尾、回滚或升级，交付 handoff.md",
+      "owner": "Bruce",
+      "cadence": "on demand",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "签字版清单",
+          "变更日志",
+          "治理决议"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "deploy",
+      "kind": "execution",
+      "responsibility": "唯一写者：仅凭签字批准单把候选版写入生产出院标准与清单，保留上一版本用于回滚",
+      "owner": "信息科（执行）/ Bruce（责任）",
+      "cadence": "on approval",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "签字批准单",
+          "合并候选清单"
+        ],
+        "outputs": [
+          "签字版清单",
+          "变更日志"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "production/discharge_criteria"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "agent_los",
+      "to": "arbiter",
+      "relation": "feeds",
+      "artifact": "LOS 变更提案"
+    },
+    {
+      "from": "agent_return",
+      "to": "arbiter",
+      "relation": "feeds",
+      "artifact": "返诊变更提案"
+    },
+    {
+      "from": "arbiter",
+      "to": "verify_trial",
+      "relation": "feeds",
+      "artifact": "合并候选清单"
+    },
+    {
+      "from": "arbiter",
+      "to": "counter_harm",
+      "relation": "feeds",
+      "artifact": "合并候选清单"
+    },
+    {
+      "from": "arbiter",
+      "to": "change_control",
+      "relation": "feeds",
+      "artifact": "合并候选清单"
+    },
+    {
+      "from": "arbiter",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "冲突记录"
+    },
+    {
+      "from": "arbiter",
+      "to": "agent_los",
+      "relation": "arbitrates",
+      "artifact": "冲突记录"
+    },
+    {
+      "from": "arbiter",
+      "to": "agent_return",
+      "relation": "arbitrates",
+      "artifact": "冲突记录"
+    },
+    {
+      "from": "anchor_ehr_los",
+      "to": "verify_trial",
+      "relation": "anchors",
+      "artifact": "LOS 锚点数据"
+    },
+    {
+      "from": "anchor_returns",
+      "to": "verify_trial",
+      "relation": "anchors",
+      "artifact": "返诊锚点数据"
+    },
+    {
+      "from": "anchor_returns",
+      "to": "counter_harm",
+      "relation": "anchors",
+      "artifact": "返诊锚点数据"
+    },
+    {
+      "from": "anchor_ehr_los",
+      "to": "counter_harm",
+      "relation": "anchors",
+      "artifact": "LOS 锚点数据"
+    },
+    {
+      "from": "anchor_ehr_los",
+      "to": "audit_data",
+      "relation": "anchors",
+      "artifact": "LOS 锚点数据"
+    },
+    {
+      "from": "anchor_returns",
+      "to": "audit_data",
+      "relation": "anchors",
+      "artifact": "返诊锚点数据"
+    },
+    {
+      "from": "verify_trial",
+      "to": "change_control",
+      "relation": "vetoes",
+      "artifact": "验证结论（通过/否决）"
+    },
+    {
+      "from": "counter_harm",
+      "to": "change_control",
+      "relation": "vetoes",
+      "artifact": "反指标报告"
+    },
+    {
+      "from": "verify_trial",
+      "to": "agent_los",
+      "relation": "constrains",
+      "artifact": "验证结论（通过/否决）"
+    },
+    {
+      "from": "verify_trial",
+      "to": "agent_return",
+      "relation": "constrains",
+      "artifact": "验证结论（通过/否决）"
+    },
+    {
+      "from": "counter_harm",
+      "to": "agent_los",
+      "relation": "constrains",
+      "artifact": "否决意见"
+    },
+    {
+      "from": "counter_harm",
+      "to": "agent_return",
+      "relation": "constrains",
+      "artifact": "否决意见"
+    },
+    {
+      "from": "audit_data",
+      "to": "change_control",
+      "relation": "constrains",
+      "artifact": "审计报告"
+    },
+    {
+      "from": "audit_data",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "审计报告"
+    },
+    {
+      "from": "deploy",
+      "to": "audit_data",
+      "relation": "observes",
+      "artifact": "变更日志"
+    },
+    {
+      "from": "deploy",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "签字版清单"
+    },
+    {
+      "from": "governance",
+      "to": "arbiter",
+      "relation": "revises",
+      "artifact": "治理决议"
+    },
+    {
+      "from": "governance",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "治理决议"
+    },
+    {
+      "from": "agent_los",
+      "to": "counter_harm",
+      "relation": "observes",
+      "artifact": "LOS 变更提案"
+    },
+    {
+      "from": "agent_return",
+      "to": "counter_harm",
+      "relation": "observes",
+      "artifact": "返诊变更提案"
+    },
+    {
+      "from": "agent_los",
+      "to": "audit_data",
+      "relation": "observes",
+      "artifact": "LOS 变更提案"
+    },
+    {
+      "from": "agent_return",
+      "to": "audit_data",
+      "relation": "observes",
+      "artifact": "返诊变更提案"
+    },
+    {
+      "from": "deploy",
+      "to": "agent_los",
+      "relation": "constrains",
+      "artifact": "签字版清单"
+    },
+    {
+      "from": "deploy",
+      "to": "agent_return",
+      "relation": "constrains",
+      "artifact": "签字版清单"
+    },
+    {
+      "from": "deploy",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "变更日志"
+    },
+    {
+      "from": "change_control",
+      "to": "deploy",
+      "relation": "constrains",
+      "artifact": "签字批准单"
+    },
+    {
+      "from": "arbiter",
+      "to": "deploy",
+      "relation": "feeds",
+      "artifact": "合并候选清单"
+    }
+  ]
+}

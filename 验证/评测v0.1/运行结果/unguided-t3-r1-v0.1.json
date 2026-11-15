@@ -1,0 +1,266 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊 AI 休克预警阈值持续优化控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "需要周期性重复的阈值优化循环（loop），但目标存在冲突（敏感度↑ vs 报警负担/护士疲劳），单指标优化会产生 Goodhart 问题；需要独立于优化者的真实结局锚点（病历复核的休克结局）、独立验证、反指标循环、仲裁，以及上线前不可绕过的科室医疗质量委员会人工闸门。多角色、多约束、有高风险临床副作用，故为 graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在不超出科室可接受报警负担的前提下，周期性提出并验证休克预警阈值调整方案，提高休克识别敏感度、减少漏诊；任何上线必须经科室医疗质量委员会批准。",
+    "human_owner": "Bruce",
+    "observable_success": "经委员会批准上线的阈值版本，在前瞻性监测期内：经病历复核确认的休克病例敏感度相对基线提升且置信区间下限不低于基线；每护士每班报警数与无效报警占比不超过委员会设定的上限；无新增因阈值导致的漏诊不良事件；每次变更均有完整审计包与可回滚记录。",
+    "metrics": [
+      {"name": "sensitivity_adjudicated", "direction": "maximize", "source": "病历复核确认的休克结局"},
+      {"name": "alarms_per_nurse_shift", "direction": "constrain_max", "source": "报警日志+排班"},
+      {"name": "ppv_false_alarm_ratio", "direction": "constrain", "source": "报警日志+复核结局"},
+      {"name": "missed_shock_events", "direction": "minimize", "source": "不良事件/漏诊复核"},
+      {"name": "time_to_intervention", "direction": "monitor", "source": "电子病历"}
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取去标识化的历史生命体征、报警日志、结局标签数据",
+      "在离线/回顾性数据和影子模式中计算候选阈值的性能",
+      "生成阈值调整提案、性能报告、亚组分析和审计包",
+      "向 Bruce 与质量委员会提交待审材料",
+      "在发现安全信号时提出暂停或回滚建议"
+    ],
+    "forbidden_actions": [
+      "直接修改生产环境报警阈值或模型",
+      "绕过科室医疗质量委员会审批上线任何阈值",
+      "自行修改或重新定义休克结局标签/复核标准",
+      "修改报警负担上限、敏感度底线等冻结规则",
+      "使用验证集或前瞻监测数据调参",
+      "导出可识别患者身份的数据",
+      "直接联系患者或干预临床决策"
+    ]
+  },
+  "frozen_rules": [
+    "生产阈值只能在质量委员会书面批准后由信息科按变更流程部署，Agent 无写权限。",
+    "休克结局定义与病历复核标准由委员会确定，优化期间冻结，Agent 不得改动。",
+    "报警负担上限（每护士每班报警数、无效报警比例）由委员会和护理部设定，作为硬约束而非可交换指标。",
+    "任何候选阈值在关键亚组（老年、儿科如适用、创伤、脓毒症、夜班）敏感度不得低于当前版本。",
+    "调参数据、验证数据、前瞻监测数据严格分离；验证者不得看到优化过程。",
+    "新阈值先影子模式运行规定周期，再经委员会决定是否上线。",
+    "每次上线必须附回滚方案；安全信号触发时立即恢复上一已批准版本。",
+    "数据去标识化，遵守医院数据安全与伦理要求。"
+  ],
+  "approval": {"status": "pending"},
+  "budget": {"max_agents": 7, "max_concurrency": 3, "max_retries": 2, "max_cost_units": 100},
+  "failure_policy": "任一循环达到 max_iterations 仍未得到满足所有硬约束的候选，则本周期不提出变更，保留现行阈值并提交原因报告。数据质量异常、标签延迟、锚点过期、独立验证与锚点不一致、反指标越界或前瞻监测出现漏诊安全信号时，暂停优化并交由 Bruce；生产中出现安全信号时建议立即回滚至上一已批准版本。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "无候选同时满足敏感度提升与报警负担上限",
+      "独立验证结果与病历复核锚点不一致",
+      "结局标签锚点超过 max_age_days 未更新",
+      "数据漂移或数据缺失超过阈值",
+      "前瞻监测发现阈值相关漏诊或报警负担越界",
+      "质量委员会否决或要求补充材料",
+      "预算或重试次数耗尽"
+    ],
+    "artifact": "交接包：当前阈值版本、候选及被拒原因、性能/反指标/亚组报告、锚点状态、数据质量报告、建议的下一步"
+  },
+  "execution_contract": {"external_execution": false},
+  "external_inputs": [
+    "去标识化生命体征与报警日志（信息科定期导出）",
+    "护理排班数据",
+    "委员会设定的报警负担上限与敏感度底线"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_outcome_labels",
+      "source": "临床医师按冻结标准对休克结局进行病历复核（双人复核、分歧仲裁）",
+      "evidence_form": "带复核者签名的病例级结局标签表（休克是/否、发生时间、漏诊判定）",
+      "owner": "Bruce",
+      "freshness_rule": "每个优化周期前必须包含最近一个周期的复核标签；超期则停止优化",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_nurse_burden",
+      "source": "护理部报警负担统计与护士反馈（结构化问卷/无效报警标注）",
+      "evidence_form": "每班报警数、无效报警比例、护士负担评分月报",
+      "owner": "Bruce",
+      "freshness_rule": "每月更新；超期则反指标循环不得放行候选",
+      "frozen": true,
+      "max_age_days": 35,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "data_quality_audit",
+      "kind": "audit_loop",
+      "responsibility": "检查新一期数据完整性、缺失、漂移、标签延迟和泄露风险，划分调参/验证/前瞻集",
+      "owner": "Bruce",
+      "contract": {"inputs": ["去标识化生命体征与报警日志", "护理排班数据", "复核结局标签"], "outputs": ["数据质量报告", "分离后的调参集", "封存的验证集"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["raw_ehr_export", "outcome_labels"],
+      "side_effect": "none",
+      "writes": ["data_split_registry"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "threshold_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "在调参集上搜索候选阈值（含分层/时段阈值），以敏感度为目标、报警负担为硬约束生成候选",
+      "owner": "Bruce",
+      "contract": {"inputs": ["分离后的调参集", "冻结约束", "上周期被拒原因"], "outputs": ["候选阈值集及调参集性能"]},
+      "max_iterations": 5,
+      "evidence_sources": ["tuning_set"],
+      "optimizes": "sensitivity_adjudicated",
+      "side_effect": "internal-reversible",
+      "writes": ["candidate_registry"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "independent_verifier",
+      "kind": "verification_loop",
+      "responsibility": "在封存验证集上独立复算候选性能（敏感度、PPV、校准、亚组），不读取优化过程，并与病历复核锚点对照",
+      "owner": "Bruce",
+      "contract": {"inputs": ["候选阈值集", "封存的验证集", "复核结局标签"], "outputs": ["独立验证报告"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["holdout_set", "outcome_labels"],
+      "side_effect": "none",
+      "writes": ["verification_reports"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "alarm_burden_counter",
+      "kind": "counter_metric_loop",
+      "responsibility": "估算候选的每护士每班报警数、无效报警比例、报警聚集，并与护理负担锚点对照，越界即否决",
+      "owner": "Bruce",
+      "contract": {"inputs": ["候选阈值集", "封存的验证集", "护理排班数据", "护理负担月报"], "outputs": ["报警负担评估与否决意见"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["holdout_set", "nursing_burden_reports", "roster"],
+      "optimizes": "alarms_per_nurse_shift",
+      "side_effect": "none",
+      "writes": ["burden_reports"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "anchor_outcome_labels",
+      "kind": "anchor",
+      "responsibility": "提供冻结标准下的病历复核休克结局，作为敏感度与漏诊的唯一真值",
+      "owner": "Bruce",
+      "contract": {"inputs": ["病历复核结果"], "outputs": ["复核结局标签"]},
+      "evidence_sources": ["clinician_chart_review"],
+      "side_effect": "none",
+      "writes": ["outcome_labels"],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "anchor_nurse_burden",
+      "kind": "anchor",
+      "responsibility": "提供护理部实测报警负担与护士反馈，作为反指标真值",
+      "owner": "Bruce",
+      "contract": {"inputs": ["护理部统计与问卷"], "outputs": ["护理负担月报"]},
+      "evidence_sources": ["nursing_department"],
+      "side_effect": "none",
+      "writes": ["nursing_burden_reports"],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "tradeoff_arbitration",
+      "kind": "arbitration",
+      "responsibility": "合并验证与反指标结果，按优先级裁决：安全底线（亚组敏感度不下降、漏诊）> 报警负担上限 > 总体敏感度提升；无合格候选则保持现状",
+      "owner": "Bruce",
+      "contract": {"inputs": ["独立验证报告", "报警负担评估与否决意见"], "outputs": ["推荐候选或不变更决定"]},
+      "priority_policy": "patient_safety_floor > alarm_burden_cap > sensitivity_gain > simplicity",
+      "side_effect": "none",
+      "writes": ["arbitration_decisions"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "shadow_monitor",
+      "kind": "verification_loop",
+      "responsibility": "推荐候选在影子模式下与现行阈值并行运行（不发出报警），按前瞻数据和新增复核标签评估",
+      "owner": "Bruce",
+      "contract": {"inputs": ["推荐候选或不变更决定", "复核结局标签", "护理负担月报"], "outputs": ["影子模式前瞻报告"]},
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["prospective_stream", "outcome_labels", "nursing_burden_reports"],
+      "side_effect": "internal-reversible",
+      "writes": ["shadow_reports"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "submission_synthesis",
+      "kind": "synthesis",
+      "responsibility": "汇编委员会审议材料：变更理由、性能与反指标、亚组、影子结果、风险、回滚方案、数据质量",
+      "owner": "Bruce",
+      "contract": {"inputs": ["影子模式前瞻报告", "推荐候选或不变更决定", "数据质量报告"], "outputs": ["委员会审议包"]},
+      "side_effect": "none",
+      "writes": ["committee_packages"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "quality_committee_gate",
+      "kind": "human_gate",
+      "responsibility": "科室医疗质量委员会审议：批准、否决或要求补充；批准后由信息科按变更流程部署",
+      "owner": "Bruce",
+      "contract": {"inputs": ["委员会审议包"], "outputs": ["委员会决议（含批准版本与上线条件）"]},
+      "side_effect": "high-risk",
+      "writes": ["approved_threshold_registry"],
+      "cadence_tier": "human"
+    },
+    {
+      "id": "post_deploy_governance",
+      "kind": "governance_loop",
+      "responsibility": "上线后持续监测漏诊、报警负担、数据漂移；触发安全信号时建议回滚并上报，周期性回馈优化循环",
+      "owner": "Bruce",
+      "contract": {"inputs": ["委员会决议（含批准版本与上线条件）", "复核结局标签", "护理负担月报"], "outputs": ["上线后监测报告", "回滚/暂停建议", "下一周期修订意见"]},
+      "max_iterations": 12,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["production_alarm_log", "outcome_labels", "nursing_burden_reports"],
+      "side_effect": "none",
+      "writes": ["monitoring_reports"],
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "stop_handoff_bruce",
+      "kind": "stop_handoff",
+      "responsibility": "任一停止条件触发时汇总交接包并交给 Bruce",
+      "owner": "Bruce",
+      "contract": {"inputs": ["数据质量报告", "独立验证报告", "报警负担评估与否决意见", "上线后监测报告", "回滚/暂停建议", "委员会决议（含批准版本与上线条件）"], "outputs": ["交接包"]},
+      "side_effect": "none",
+      "writes": ["handoff_packages"],
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "anchor_outcome_labels", "to": "data_quality_audit", "relation": "feeds", "artifact": "复核结局标签"},
+    {"from": "data_quality_audit", "to": "threshold_optimizer", "relation": "feeds", "artifact": "分离后的调参集"},
+    {"from": "data_quality_audit", "to": "independent_verifier", "relation": "feeds", "artifact": "封存的验证集"},
+    {"from": "data_quality_audit", "to": "alarm_burden_counter", "relation": "feeds", "artifact": "封存的验证集"},
+    {"from": "threshold_optimizer", "to": "independent_verifier", "relation": "feeds", "artifact": "候选阈值集"},
+    {"from": "threshold_optimizer", "to": "alarm_burden_counter", "relation": "feeds", "artifact": "候选阈值集"},
+    {"from": "anchor_outcome_labels", "to": "independent_verifier", "relation": "anchors", "artifact": "复核结局标签"},
+    {"from": "anchor_nurse_burden", "to": "alarm_burden_counter", "relation": "anchors", "artifact": "护理负担月报"},
+    {"from": "independent_verifier", "to": "tradeoff_arbitration", "relation": "verifies", "artifact": "独立验证报告"},
+    {"from": "alarm_burden_counter", "to": "tradeoff_arbitration", "relation": "vetoes", "artifact": "报警负担评估与否决意见"},
+    {"from": "tradeoff_arbitration", "to": "threshold_optimizer", "relation": "revises", "artifact": "上周期被拒原因"},
+    {"from": "tradeoff_arbitration", "to": "shadow_monitor", "relation": "feeds", "artifact": "推荐候选或不变更决定"},
+    {"from": "anchor_outcome_labels", "to": "shadow_monitor", "relation": "anchors", "artifact": "复核结局标签"},
+    {"from": "anchor_nurse_burden", "to": "shadow_monitor", "relation": "anchors", "artifact": "护理负担月报"},
+    {"from": "shadow_monitor", "to": "submission_synthesis", "relation": "feeds", "artifact": "影子模式前瞻报告"},
+    {"from": "tradeoff_arbitration", "to": "submission_synthesis", "relation": "feeds", "artifact": "推荐候选或不变更决定"},
+    {"from": "data_quality_audit", "to": "submission_synthesis", "relation": "feeds", "artifact": "数据质量报告"},
+    {"from": "submission_synthesis", "to": "quality_committee_gate", "relation": "feeds", "artifact": "委员会审议包"},
+    {"from": "quality_committee_gate", "to": "post_deploy_governance", "relation": "constrains", "artifact": "委员会决议（含批准版本与上线条件）"},
+    {"from": "anchor_outcome_labels", "to": "post_deploy_governance", "relation": "anchors", "artifact": "复核结局标签"},
+    {"from": "anchor_nurse_burden", "to": "post_deploy_governance", "relation": "anchors", "artifact": "护理负担月报"},
+    {"from": "post_deploy_governance", "to": "threshold_optimizer", "relation": "observes", "artifact": "下一周期修订意见"},
+    {"from": "data_quality_audit", "to": "stop_handoff_bruce", "relation": "escalates", "artifact": "数据质量报告"},
+    {"from": "independent_verifier", "to": "stop_handoff_bruce", "relation": "escalates", "artifact": "独立验证报告"},
+    {"from": "alarm_burden_counter", "to": "stop_handoff_bruce", "relation": "escalates", "artifact": "报警负担评估与否决意见"},
+    {"from": "post_deploy_governance", "to": "stop_handoff_bruce", "relation": "escalates", "artifact": "回滚/暂停建议"},
+    {"from": "post_deploy_governance", "to": "stop_handoff_bruce", "relation": "escalates", "artifact": "上线后监测报告"},
+    {"from": "quality_committee_gate", "to": "stop_handoff_bruce", "relation": "hands_off", "artifact": "委员会决议（含批准版本与上线条件）"}
+  ]
+}

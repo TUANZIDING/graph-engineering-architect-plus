@@ -1,0 +1,488 @@
+{
+  "schema_version": "1.1",
+  "title": "科研代码库失败测试修复系统（测试冻结 + 人工合并门）",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "科研代码库的真实行为正确：在不削弱既有测试、不改变科学计算结果的前提下，修复导致测试失败的源代码缺陷，并经 Bruce 批准后合入主分支。",
+    "human_owner": "Bruce",
+    "observable_success": "在干净 CI 中，候选分支通过 Bruce 冻结（哈希锁定）的基线测试套件 + Bruce 持有的留出测试 + 参考科学输出回归比对（数值容差不放宽），且测试完整性检查无削弱（无删除/跳过/xfail/放宽断言/放宽容差，变异得分不下降），并由 Bruce 签字合并。",
+    "out_of_scope": [
+      "Agent 自行修改、删除、跳过、放宽既有测试或数值容差",
+      "Agent 自动合并到主分支（main）",
+      "改动 CI 配置、测试运行器、覆盖率/变异阈值或参考输出",
+      "以“测试全绿”单独作为完成标准",
+      "改变科学方法或分析口径（属于研究决策，归 Bruce）"
+    ],
+    "metrics": [
+      "失败测试数",
+      "冻结基线通过率",
+      "留出测试通过率",
+      "参考输出一致率",
+      "变异得分",
+      "测试削弱事件数",
+      "新增测试覆盖"
+    ]
+  },
+  "classification_rationale": "原始方案里“测试全绿=完成”+“Agent 自己改测试”+“自动合并”构成元回路劫持：优化者能改写自己的裁判，最省力的路径就是删/跳/放宽测试，全绿变得毫无意义，且直接污染 main。单回路不够：需要（1）优化者碰不到的冻结锚点（哈希锁定基线测试、Bruce 留出测试、参考科学输出），（2）独立 CI 验证者，（3）专抓测试削弱的反指标回路，（4）审计 flaky/锚点漂移的慢回路，（5）合并与测试入库的人工门。故采用 graph_plus_loop：内部修复是一个有界执行回路，外部用图提供扎根、否决与治理。Agent 新增测试只能作为提案，经 Bruce 批准后才进入冻结套件；不支持原需求中的自动合并与自改测试。",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "在隔离的 fix/* 分支修改 src/ 下的源代码",
+      "在本地沙箱运行测试",
+      "在 proposed-tests/ 目录新增测试用例提案（仅新增，不进入冻结套件）",
+      "开 Pull Request 并附修复说明与证据"
+    ],
+    "forbidden_actions": [
+      "修改、删除、跳过、标记 xfail 或放宽冻结基线测试与数值容差",
+      "读取或修改 Bruce 留出测试与参考输出",
+      "修改 CI 配置、测试运行器、conftest、覆盖率与变异阈值",
+      "推送或合并到 main",
+      "改变科学算法的计算口径以迎合测试"
+    ]
+  },
+  "frozen_rules": [
+    "基线测试套件以 SHA-256 清单锁定，只有 Bruce 批准才能更新清单",
+    "留出测试与参考科学输出由 Bruce 保管，执行回路不可读不可写",
+    "数值容差、覆盖率与变异得分阈值冻结",
+    "CI 配置与测试运行器冻结",
+    "main 分支受保护，合并必须 Bruce 签字",
+    "测试只能增不能减；新增测试须经 Bruce 批准方可入冻结套件"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 7,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "failed": "候选被否决：退回修复回路并附否决理由；同一缺陷连续 3 次被否决则停止并移交 Bruce",
+    "blocked": "锚点过期、CI 不可用、或修复必须改测试/改科学口径才能通过：停止并升级给 Bruce，不得绕过",
+    "budget_exhausted": "达到迭代或成本上限：停止，提交未解决失败清单与已尝试方案的 handoff.md 给 Bruce",
+    "stalled": "连续 2 轮失败测试数无下降：停止并移交"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed：冻结基线+留出测试+参考输出全部通过、完整性检查无削弱、Bruce 签字合并",
+      "failed：同一缺陷连续 3 次被否决",
+      "blocked：锚点过期或修复需改测试/改科学口径",
+      "budget_exhausted：迭代或成本耗尽"
+    ],
+    "artifact": "handoff.md"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "科学正确性（参考输出一致） > 测试完整性（无削弱） > 冻结基线与留出测试通过 > 新增测试覆盖 > 修复速度。任一上层否决即不合并；测试本身疑似错误时只能由 Bruce 判定并修改锚点。"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change（基线清单、留出测试、参考输出、容差）",
+      "Permission expansion",
+      "新增测试进入冻结套件",
+      "合并到 main"
+    ]
+  },
+  "verification": {
+    "independence_statement": "CI 验证者在干净容器中从受保护仓库检出冻结测试清单与 Bruce 留出测试独立执行，不使用修复 Agent 的运行日志或其提交的测试；测试完整性检查直接对比 git diff 与冻结清单并运行变异测试。评估者与数据来源都与执行回路不同。",
+    "checks": [
+      "ci_verifier",
+      "test_integrity_counter"
+    ]
+  },
+  "external_inputs": [
+    "失败测试报告（来自 main 的 CI）",
+    "代码库 main 快照"
+  ],
+  "anchors": [
+    {
+      "node_id": "frozen_test_anchor",
+      "source": "Bruce 保管的哈希锁定基线测试套件 + 留出测试 + 参考科学输出（独立存储，修复回路无读写权）",
+      "evidence_form": "干净 CI 中实际执行的测试结果与参考输出数值比对报告",
+      "owner": "Bruce",
+      "freshness_rule": "每次候选都重新执行；锚点清单每 30 天或科学方法变更时由 Bruce 复核",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "fix_loop",
+      "kind": "execution_loop",
+      "cadence": "每次迭代",
+      "cadence_tier": "fast",
+      "responsibility": "定位失败测试的根因并只改源代码修复，每轮产出一个候选补丁",
+      "owner": "编程 Agent",
+      "max_iterations": 10,
+      "optimizes": "失败测试数",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "fix/* 分支"
+      ],
+      "evidence_sources": [
+        "本地沙箱测试运行"
+      ],
+      "contract": {
+        "inputs": [
+          "失败测试报告（来自 main 的 CI）",
+          "代码库 main 快照",
+          "否决理由"
+        ],
+        "outputs": [
+          "候选补丁 PR"
+        ]
+      }
+    },
+    {
+      "id": "test_proposal",
+      "kind": "execution",
+      "cadence": "每个候选",
+      "cadence_tier": "fast",
+      "responsibility": "为修复覆盖的情形起草新增测试提案（只增不改），供 Bruce 审批",
+      "owner": "编程 Agent",
+      "optimizes": "新增测试覆盖",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "proposed-tests/"
+      ],
+      "evidence_sources": [
+        "候选补丁 PR"
+      ],
+      "contract": {
+        "inputs": [
+          "候选补丁 PR"
+        ],
+        "outputs": [
+          "新增测试提案"
+        ]
+      }
+    },
+    {
+      "id": "frozen_test_anchor",
+      "kind": "anchor",
+      "cadence": "Bruce 批准时更新",
+      "cadence_tier": "human",
+      "responsibility": "提供优化者无法改写的现实证据：冻结基线测试、留出测试、参考科学输出",
+      "owner": "Bruce",
+      "side_effect": "none",
+      "writes": [
+        "冻结测试清单"
+      ],
+      "evidence_sources": [
+        "Bruce 保管的测试与参考输出存储"
+      ],
+      "contract": {
+        "inputs": [
+          "已批准测试变更"
+        ],
+        "outputs": [
+          "冻结测试与参考输出"
+        ]
+      }
+    },
+    {
+      "id": "ci_verifier",
+      "kind": "verification_loop",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "responsibility": "在干净 CI 中独立执行冻结基线、留出测试与参考输出比对，判定候选能否过",
+      "owner": "CI 系统（确定性）",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "evidence_sources": [
+        "Bruce 保管的测试与参考输出存储",
+        "干净容器执行"
+      ],
+      "contract": {
+        "inputs": [
+          "候选补丁 PR",
+          "冻结测试与参考输出"
+        ],
+        "outputs": [
+          "CI 验证报告"
+        ]
+      }
+    },
+    {
+      "id": "test_integrity_counter",
+      "kind": "counter_metric_loop",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "responsibility": "反指标：检查 diff 中是否触碰测试/容差/CI，跳过或 xfail 数、断言数、覆盖率与变异得分是否下降；检查新增测试提案是否真能捕获缺陷（对修复前代码应失败）",
+      "owner": "确定性检查脚本 + 变异测试工具",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "optimizes": "测试削弱事件数",
+      "side_effect": "none",
+      "evidence_sources": [
+        "git diff 对冻结清单",
+        "变异测试执行"
+      ],
+      "contract": {
+        "inputs": [
+          "候选补丁 PR",
+          "新增测试提案",
+          "冻结测试与参考输出"
+        ],
+        "outputs": [
+          "完整性报告"
+        ]
+      }
+    },
+    {
+      "id": "weekly_audit",
+      "kind": "audit_loop",
+      "cadence": "每周",
+      "cadence_tier": "slow",
+      "responsibility": "审计 flaky 测试、锚点新鲜度、参考输出是否仍对应当前科学方法、被否决候选的模式，提出锚点变更建议（只提议）",
+      "owner": "审计 Agent（只读）",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "evidence_sources": [
+        "历史 CI 记录",
+        "冻结测试清单"
+      ],
+      "contract": {
+        "inputs": [
+          "CI 验证报告",
+          "完整性报告",
+          "冻结测试与参考输出"
+        ],
+        "outputs": [
+          "审计报告"
+        ]
+      }
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "cadence": "检查者冲突时",
+      "cadence_tier": "human",
+      "responsibility": "当 CI 通过但完整性检查报警、或修复需改测试才能过时，按优先级裁决",
+      "owner": "Bruce",
+      "priority_policy": "科学正确性 > 测试完整性 > 冻结测试通过 > 新增覆盖 > 速度",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "CI 验证报告",
+          "完整性报告",
+          "审计报告"
+        ],
+        "outputs": [
+          "裁决记录"
+        ]
+      }
+    },
+    {
+      "id": "merge_gate",
+      "kind": "human_gate",
+      "cadence": "每个通过验证的候选",
+      "cadence_tier": "human",
+      "responsibility": "Bruce 审阅并签字：是否合并补丁到 main；批准哪些新增测试进入冻结套件",
+      "owner": "Bruce",
+      "side_effect": "none",
+      "writes": [],
+      "contract": {
+        "inputs": [
+          "CI 验证报告",
+          "完整性报告",
+          "裁决记录",
+          "新增测试提案"
+        ],
+        "outputs": [
+          "合并签字",
+          "已批准测试变更"
+        ]
+      }
+    },
+    {
+      "id": "merge_executor",
+      "kind": "execution",
+      "cadence": "Bruce 签字后",
+      "cadence_tier": "human",
+      "responsibility": "仅在存在 Bruce 签字记录时，用受保护分支规则执行合并到 main，并保留回滚点",
+      "owner": "Git 平台受保护分支（确定性）",
+      "side_effect": "high-risk",
+      "writes": [
+        "main 分支"
+      ],
+      "contract": {
+        "inputs": [
+          "合并签字"
+        ],
+        "outputs": [
+          "合并记录"
+        ]
+      }
+    },
+    {
+      "id": "stop_node",
+      "kind": "stop_handoff",
+      "cadence": "终态时",
+      "cadence_tier": "human",
+      "responsibility": "按 completed/failed/blocked/budget_exhausted 写 handoff.md 交给 Bruce",
+      "owner": "Bruce",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "合并记录",
+          "失败升级"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "fix_loop",
+      "to": "ci_verifier",
+      "relation": "feeds",
+      "artifact": "候选补丁 PR"
+    },
+    {
+      "from": "fix_loop",
+      "to": "test_integrity_counter",
+      "relation": "feeds",
+      "artifact": "候选补丁 PR"
+    },
+    {
+      "from": "fix_loop",
+      "to": "test_proposal",
+      "relation": "feeds",
+      "artifact": "候选补丁 PR"
+    },
+    {
+      "from": "test_proposal",
+      "to": "test_integrity_counter",
+      "relation": "feeds",
+      "artifact": "新增测试提案"
+    },
+    {
+      "from": "test_proposal",
+      "to": "merge_gate",
+      "relation": "feeds",
+      "artifact": "新增测试提案"
+    },
+    {
+      "from": "frozen_test_anchor",
+      "to": "ci_verifier",
+      "relation": "anchors",
+      "artifact": "冻结测试与参考输出"
+    },
+    {
+      "from": "frozen_test_anchor",
+      "to": "test_integrity_counter",
+      "relation": "anchors",
+      "artifact": "冻结测试与参考输出"
+    },
+    {
+      "from": "frozen_test_anchor",
+      "to": "weekly_audit",
+      "relation": "anchors",
+      "artifact": "冻结测试与参考输出"
+    },
+    {
+      "from": "ci_verifier",
+      "to": "fix_loop",
+      "relation": "observes",
+      "artifact": "否决理由"
+    },
+    {
+      "from": "ci_verifier",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "CI 验证报告"
+    },
+    {
+      "from": "test_integrity_counter",
+      "to": "merge_gate",
+      "relation": "vetoes",
+      "artifact": "完整性报告"
+    },
+    {
+      "from": "test_integrity_counter",
+      "to": "fix_loop",
+      "relation": "observes",
+      "artifact": "否决理由"
+    },
+    {
+      "from": "ci_verifier",
+      "to": "arbiter",
+      "relation": "escalates",
+      "artifact": "CI 验证报告"
+    },
+    {
+      "from": "test_integrity_counter",
+      "to": "arbiter",
+      "relation": "escalates",
+      "artifact": "完整性报告"
+    },
+    {
+      "from": "ci_verifier",
+      "to": "weekly_audit",
+      "relation": "feeds",
+      "artifact": "CI 验证报告"
+    },
+    {
+      "from": "test_integrity_counter",
+      "to": "weekly_audit",
+      "relation": "feeds",
+      "artifact": "完整性报告"
+    },
+    {
+      "from": "weekly_audit",
+      "to": "arbiter",
+      "relation": "escalates",
+      "artifact": "审计报告"
+    },
+    {
+      "from": "arbiter",
+      "to": "merge_gate",
+      "relation": "arbitrates",
+      "artifact": "裁决记录"
+    },
+    {
+      "from": "merge_gate",
+      "to": "frozen_test_anchor",
+      "relation": "revises",
+      "artifact": "已批准测试变更"
+    },
+    {
+      "from": "fix_loop",
+      "to": "stop_node",
+      "relation": "escalates",
+      "artifact": "失败升级"
+    },
+    {
+      "from": "merge_gate",
+      "to": "fix_loop",
+      "relation": "constrains",
+      "artifact": "合并签字（未签字的候选不得进入 main；Bruce 可限定修复范围）"
+    },
+    {
+      "from": "merge_gate",
+      "to": "merge_executor",
+      "relation": "constrains",
+      "artifact": "合并签字"
+    },
+    {
+      "from": "merge_executor",
+      "to": "stop_node",
+      "relation": "hands_off",
+      "artifact": "合并记录"
+    }
+  ]
+}

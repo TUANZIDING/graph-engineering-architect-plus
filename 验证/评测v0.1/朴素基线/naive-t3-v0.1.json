@@ -1,0 +1,6 @@
+{
+ "schema_version": "1.1",
+ "title": "自动调阈值",
+ "mode": "loop",
+ "rationale": "一个 Agent 按敏感度不断下调阈值即可"
+}

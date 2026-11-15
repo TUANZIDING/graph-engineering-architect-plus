@@ -1,0 +1,629 @@
+{
+ "schema_version": "1.1",
+ "title": "急诊出院流程双目标改进控制架构",
+ "mode": "graph",
+ "state": "designed",
+ "classification_rationale": "两个 Agent 优化相互拉扯的目标（滞留时间 vs 72h 返诊），且共享同一可写对象（出院标准与流程清单）；两个指标都可被钻空子（提早赶人出院/把患者推去别院或收住院），需要独立验证、反指标、仲裁、单写者与人工门，属于 graph。",
+ "root_goal": {
+  "statement": "在不增加患者伤害的前提下，同时缩短急诊滞留时间并降低 72 小时返诊率，改进急诊出院标准与流程清单。",
+  "human_owner": "Bruce",
+  "observable_success": "相对冻结基线（前 12 周 HIS 原始就诊数据），连续 8 周：急诊滞留时间中位数下降 ≥10%；72h 返诊率（含区域平台跨院返诊）不升且目标下降 ≥10%；72h 返诊后收住院/ICU/死亡、离院未就诊率、出院医嘱不全率均不劣于基线（非劣效界值由质控委员会冻结）；改动均经急诊质控委员会批准。",
+  "metrics": [
+   "ed_length_of_stay",
+   "return_72h_rate",
+   "return_72h_with_admission_icu_death",
+   "lwbs_rate",
+   "cross_hospital_return_rate",
+   "boarding_time"
+  ],
+  "out_of_scope": [
+   "Agent 直接修改生产 HIS 出院标准或医嘱",
+   "单个患者的临床处置决策",
+   "改变诊断编码、返诊定义或统计口径",
+   "绩效考核与人员处罚"
+  ]
+ },
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "读取脱敏 HIS 就诊数据与分析结果",
+   "提出出院标准/流程清单修改提案",
+   "在沙盒中做回顾性模拟评估",
+   "生成报告与升级请求"
+  ],
+  "forbidden_actions": [
+   "直接写入生产出院标准或流程清单",
+   "修改返诊/滞留时间定义、基线或非劣效界值",
+   "修改验证器、反指标、审计脚本或锚点数据",
+   "绕过质控委员会人工门上线改动",
+   "接触可识别患者身份信息"
+  ]
+ },
+ "frozen_rules": [
+  "滞留时间=到达分诊至离开急诊的 HIS 原始时间戳差；72h 返诊=任一出院后 72h 内同一患者在本院或区域平台任一医院的非计划急诊就诊；口径冻结，改动需 Bruce 与质控委员会批准",
+  "基线期、非劣效界值与安全反指标清单冻结",
+  "两个执行 Agent 只能产出提案，生产出院标准与清单仅由人工门批准后单一写者发布",
+  "冲突优先级：患者安全反指标 > 72h 返诊率 > 急诊滞留时间",
+  "每次上线后最短观察窗 4 周，期间不得叠加新的同类改动",
+  "Agent 不得修改验证者、审计、锚点或治理规则，只能提议"
+ ],
+ "approval": {
+  "status": "pending"
+ },
+ "budget": {
+  "max_agents": 8,
+  "max_concurrency": 3,
+  "max_retries": 2,
+  "max_cost_units": 200
+ },
+ "failure_policy": {
+  "failed": "安全反指标越界或验证否决：提案作废；已上线改动由发布节点回滚并升级 Bruce",
+  "blocked": "锚点过期、数据管道异常或口径争议：暂停所有提案直至审计确认并由 Bruce 裁定",
+  "budget_exhausted": "迭代或成本预算耗尽：冻结当前生产版本，交接 Bruce",
+  "stalled": "连续 3 轮无提案通过验证：停止并交接 Bruce 复审目标"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "completed: 达成 observable_success 且审计确认锚点新鲜",
+   "blocked: 锚点数据不可得或口径争议未决",
+   "failed: 安全反指标越界且回滚",
+   "budget_exhausted: 迭代或成本预算耗尽",
+   "stalled: 连续 3 轮无提案通过验证"
+  ],
+  "artifact": "终态交接报告（指标对比、上线改动清单、回滚记录、未决冲突）"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "external_inputs": [
+  "HIS 原始就诊时间戳",
+  "区域健康信息平台返诊记录",
+  "医师病历抽查结果"
+ ],
+ "anchors": [
+  {
+   "node_id": "anchor_his",
+   "source": "医院 HIS 原始就诊与时间戳表（只读副本，信息科维护）",
+   "evidence_form": "按就诊的到达/离开时间戳与出院去向原始记录",
+   "owner": "信息科",
+   "freshness_rule": "每日同步，超过 7 天未更新视为过期",
+   "frozen": true,
+   "max_age_days": 7,
+   "last_confirmed": "2026-11-15"
+  },
+  {
+   "node_id": "anchor_regional",
+   "source": "区域健康信息平台跨院就诊记录（外部独立来源）",
+   "evidence_form": "出院后 72h 内任一医院急诊就诊记录",
+   "owner": "区域卫健信息中心",
+   "freshness_rule": "每周更新，超过 14 天视为过期",
+   "frozen": true,
+   "max_age_days": 14,
+   "last_confirmed": "2026-11-15"
+  },
+  {
+   "node_id": "anchor_chart_review",
+   "source": "急诊医师独立盲法病历抽查（随机抽样，不由 Agent 选样）",
+   "evidence_form": "返诊病例可避免性与出院决策适当性评分表",
+   "owner": "急诊质控小组",
+   "freshness_rule": "每月一次，超过 45 天视为过期",
+   "frozen": true,
+   "max_age_days": 45,
+   "last_confirmed": "2026-11-15"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "anchor_his",
+   "kind": "anchor",
+   "responsibility": "提供滞留时间与出院去向的原始只读证据",
+   "owner": "信息科",
+   "cadence": "daily",
+   "cadence_tier": "slow",
+   "contract": {
+    "inputs": [
+     "HIS 原始就诊时间戳"
+    ],
+    "outputs": [
+     "his_raw_encounters"
+    ]
+   },
+   "evidence_sources": [
+    "HIS"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "anchor_regional",
+   "kind": "anchor",
+   "responsibility": "提供跨院 72h 返诊的独立外部证据，防止患者被推去别院",
+   "owner": "区域卫健信息中心",
+   "cadence": "weekly",
+   "cadence_tier": "slow",
+   "contract": {
+    "inputs": [
+     "区域健康信息平台返诊记录"
+    ],
+    "outputs": [
+     "regional_returns"
+    ]
+   },
+   "evidence_sources": [
+    "区域平台"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "anchor_chart_review",
+   "kind": "anchor",
+   "responsibility": "医师盲法随机抽查出院决策适当性与返诊可避免性",
+   "owner": "急诊质控小组",
+   "cadence": "monthly",
+   "cadence_tier": "slow",
+   "contract": {
+    "inputs": [
+     "医师病历抽查结果"
+    ],
+    "outputs": [
+     "chart_review_scores"
+    ]
+   },
+   "evidence_sources": [
+    "人工病历抽查"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "los_agent",
+   "kind": "execution_loop",
+   "responsibility": "提出缩短急诊滞留时间的出院标准/清单修改提案并做沙盒回顾性模拟",
+   "owner": "滞留时间 Agent",
+   "cadence": "per iteration",
+   "cadence_tier": "fast",
+   "max_iterations": 5,
+   "optimizes": "ed_length_of_stay",
+   "contract": {
+    "inputs": [
+     "his_raw_encounters",
+     "veto_reasons"
+    ],
+    "outputs": [
+     "los_proposal"
+    ]
+   },
+   "evidence_sources": [
+    "HIS"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "los_proposal"
+   ]
+  },
+  {
+   "id": "return_agent",
+   "kind": "execution_loop",
+   "responsibility": "提出降低 72h 返诊率的出院标准/清单修改提案并做沙盒回顾性模拟",
+   "owner": "返诊率 Agent",
+   "cadence": "per iteration",
+   "cadence_tier": "fast",
+   "max_iterations": 5,
+   "optimizes": "return_72h_rate",
+   "contract": {
+    "inputs": [
+     "his_raw_encounters",
+     "veto_reasons"
+    ],
+    "outputs": [
+     "return_proposal"
+    ]
+   },
+   "evidence_sources": [
+    "HIS"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "return_proposal"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "合并两份提案、按冻结优先级解决冲突，生成唯一候选变更包",
+   "owner": "急诊科主任（Bruce 授权）",
+   "cadence": "per candidate",
+   "cadence_tier": "medium",
+   "priority_policy": "患者安全反指标 > 72h 返诊率 > 急诊滞留时间；冲突条款以更保守者为准，不可调和时升级 Bruce",
+   "contract": {
+    "inputs": [
+     "los_proposal",
+     "return_proposal"
+    ],
+    "outputs": [
+     "merged_candidate"
+    ]
+   },
+   "evidence_sources": [
+    "提案"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "merged_candidate"
+   ]
+  },
+  {
+   "id": "verifier",
+   "kind": "verification_loop",
+   "responsibility": "用 HIS 留出期原始数据与区域平台数据独立复算候选包对两个指标的影响，可否决",
+   "owner": "医院质控办数据组",
+   "cadence": "per candidate",
+   "cadence_tier": "medium",
+   "max_iterations": 3,
+   "context_scope": "fresh-independent",
+   "contract": {
+    "inputs": [
+     "merged_candidate",
+     "his_raw_encounters",
+     "regional_returns"
+    ],
+    "outputs": [
+     "verification_report",
+     "veto_reasons"
+    ]
+   },
+   "evidence_sources": [
+    "HIS 留出期",
+    "区域平台"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "safety_counter",
+   "kind": "counter_metric_loop",
+   "responsibility": "监测便宜胜利：返诊后收住院/ICU/死亡、离院未就诊、跨院返诊、滞留转移为住院等待、出院医嘱不全，越界即否决",
+   "owner": "急诊质控小组",
+   "cadence": "per candidate and weekly post-launch",
+   "cadence_tier": "medium",
+   "max_iterations": 3,
+   "context_scope": "fresh-independent",
+   "contract": {
+    "inputs": [
+     "merged_candidate",
+     "his_raw_encounters",
+     "regional_returns",
+     "chart_review_scores"
+    ],
+    "outputs": [
+     "counter_metric_report",
+     "veto_reasons"
+    ]
+   },
+   "evidence_sources": [
+    "HIS",
+    "区域平台",
+    "人工病历抽查"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "auditor",
+   "kind": "audit_loop",
+   "responsibility": "月度审计数据口径、时间戳漂移、编码变化、跨院匹配率与锚点新鲜度，检查是否存在口径游戏",
+   "owner": "医务处",
+   "cadence": "monthly",
+   "cadence_tier": "slow",
+   "max_iterations": 2,
+   "context_scope": "fresh-independent",
+   "contract": {
+    "inputs": [
+     "his_raw_encounters",
+     "regional_returns",
+     "chart_review_scores",
+     "verification_report"
+    ],
+    "outputs": [
+     "audit_report"
+    ]
+   },
+   "evidence_sources": [
+    "HIS",
+    "区域平台",
+    "人工病历抽查"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "governance",
+   "kind": "governance_loop",
+   "responsibility": "季度复审目标、非劣效界值与优先级，仅提出修订建议交人工批准",
+   "owner": "急诊质控委员会",
+   "cadence": "quarterly",
+   "cadence_tier": "governance",
+   "max_iterations": 1,
+   "contract": {
+    "inputs": [
+     "audit_report"
+    ],
+    "outputs": [
+     "governance_proposal"
+    ]
+   },
+   "evidence_sources": [
+    "审计报告"
+   ],
+   "side_effect": "none"
+  },
+  {
+   "id": "human_gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 与急诊质控委员会审批候选包上线及任何目标/口径/锚点修订",
+   "owner": "Bruce",
+   "cadence": "on demand",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "merged_candidate",
+     "verification_report",
+     "counter_metric_report",
+     "audit_report",
+     "governance_proposal"
+    ],
+    "outputs": [
+     "approval_record"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "release",
+   "kind": "execution",
+   "responsibility": "按批准记录把变更包发布到生产出院标准与流程清单（唯一生产写者），并在 4 周观察窗内保留一键回滚",
+   "owner": "医务处信息化专员",
+   "cadence": "per approved change",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "approval_record",
+     "merged_candidate"
+    ],
+    "outputs": [
+     "approved_change"
+    ]
+   },
+   "side_effect": "high-risk",
+   "writes": [
+    "production_discharge_criteria_and_checklist"
+   ]
+  },
+  {
+   "id": "stop_handoff",
+   "kind": "stop_handoff",
+   "responsibility": "终态判定、回滚记录与交接",
+   "owner": "Bruce",
+   "cadence": "on terminal state",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "approved_change",
+     "audit_report"
+    ],
+    "outputs": [
+     "final_handoff_report"
+    ]
+   },
+   "side_effect": "none"
+  }
+ ],
+ "edges": [
+  {
+   "from": "anchor_his",
+   "to": "los_agent",
+   "relation": "feeds",
+   "artifact": "his_raw_encounters（训练期）"
+  },
+  {
+   "from": "anchor_his",
+   "to": "return_agent",
+   "relation": "feeds",
+   "artifact": "his_raw_encounters（训练期）"
+  },
+  {
+   "from": "anchor_his",
+   "to": "verifier",
+   "relation": "anchors",
+   "artifact": "his_raw_encounters（留出期）"
+  },
+  {
+   "from": "anchor_regional",
+   "to": "verifier",
+   "relation": "anchors",
+   "artifact": "regional_returns"
+  },
+  {
+   "from": "anchor_his",
+   "to": "safety_counter",
+   "relation": "anchors",
+   "artifact": "his_raw_encounters"
+  },
+  {
+   "from": "anchor_regional",
+   "to": "safety_counter",
+   "relation": "anchors",
+   "artifact": "regional_returns"
+  },
+  {
+   "from": "anchor_chart_review",
+   "to": "safety_counter",
+   "relation": "anchors",
+   "artifact": "chart_review_scores"
+  },
+  {
+   "from": "anchor_his",
+   "to": "auditor",
+   "relation": "anchors",
+   "artifact": "his_raw_encounters"
+  },
+  {
+   "from": "anchor_regional",
+   "to": "auditor",
+   "relation": "anchors",
+   "artifact": "regional_returns"
+  },
+  {
+   "from": "anchor_chart_review",
+   "to": "auditor",
+   "relation": "anchors",
+   "artifact": "chart_review_scores"
+  },
+  {
+   "from": "los_agent",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "los_proposal"
+  },
+  {
+   "from": "return_agent",
+   "to": "arbiter",
+   "relation": "feeds",
+   "artifact": "return_proposal"
+  },
+  {
+   "from": "arbiter",
+   "to": "los_agent",
+   "relation": "arbitrates",
+   "artifact": "冲突裁决与被拒条款"
+  },
+  {
+   "from": "arbiter",
+   "to": "return_agent",
+   "relation": "arbitrates",
+   "artifact": "冲突裁决与被拒条款"
+  },
+  {
+   "from": "arbiter",
+   "to": "verifier",
+   "relation": "feeds",
+   "artifact": "merged_candidate"
+  },
+  {
+   "from": "arbiter",
+   "to": "safety_counter",
+   "relation": "feeds",
+   "artifact": "merged_candidate"
+  },
+  {
+   "from": "verifier",
+   "to": "arbiter",
+   "relation": "vetoes",
+   "artifact": "veto_reasons"
+  },
+  {
+   "from": "safety_counter",
+   "to": "arbiter",
+   "relation": "vetoes",
+   "artifact": "veto_reasons"
+  },
+  {
+   "from": "verifier",
+   "to": "los_agent",
+   "relation": "observes",
+   "artifact": "veto_reasons"
+  },
+  {
+   "from": "verifier",
+   "to": "return_agent",
+   "relation": "observes",
+   "artifact": "veto_reasons"
+  },
+  {
+   "from": "verifier",
+   "to": "human_gate",
+   "relation": "verifies",
+   "artifact": "verification_report"
+  },
+  {
+   "from": "safety_counter",
+   "to": "human_gate",
+   "relation": "constrains",
+   "artifact": "counter_metric_report"
+  },
+  {
+   "from": "arbiter",
+   "to": "human_gate",
+   "relation": "feeds",
+   "artifact": "merged_candidate"
+  },
+  {
+   "from": "verifier",
+   "to": "auditor",
+   "relation": "feeds",
+   "artifact": "verification_report"
+  },
+  {
+   "from": "auditor",
+   "to": "human_gate",
+   "relation": "escalates",
+   "artifact": "audit_report"
+  },
+  {
+   "from": "auditor",
+   "to": "governance",
+   "relation": "feeds",
+   "artifact": "audit_report"
+  },
+  {
+   "from": "governance",
+   "to": "human_gate",
+   "relation": "escalates",
+   "artifact": "governance_proposal"
+  },
+  {
+   "from": "human_gate",
+   "to": "governance",
+   "relation": "revises",
+   "artifact": "批准的目标/界值修订"
+  },
+  {
+   "from": "auditor",
+   "to": "stop_handoff",
+   "relation": "feeds",
+   "artifact": "audit_report"
+  },
+  {
+   "from": "human_gate",
+   "to": "release",
+   "relation": "constrains",
+   "artifact": "approval_record（签字批准记录）"
+  },
+  {
+   "from": "arbiter",
+   "to": "release",
+   "relation": "feeds",
+   "artifact": "merged_candidate"
+  },
+  {
+   "from": "release",
+   "to": "stop_handoff",
+   "relation": "hands_off",
+   "artifact": "approved_change 与回滚记录"
+  },
+  {
+   "from": "safety_counter",
+   "to": "los_agent",
+   "relation": "vetoes",
+   "artifact": "veto_reasons（安全/口径游戏证据）"
+  },
+  {
+   "from": "safety_counter",
+   "to": "return_agent",
+   "relation": "vetoes",
+   "artifact": "veto_reasons（安全/口径游戏证据）"
+  },
+  {
+   "from": "safety_counter",
+   "to": "release",
+   "relation": "vetoes",
+   "artifact": "上线后周度越界警报→回滚"
+  }
+ ]
+}

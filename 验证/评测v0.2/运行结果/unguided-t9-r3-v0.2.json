@@ -1,0 +1,314 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊胸痛分诊助手提示词优化系统（以科室标准为参照、以结局安全为底线）",
+  "mode": "graph_plus_loop",
+  "rationale": "目标不是单纯的提示词迭代：①所谓金标准制定于约三年前，可能已与现行胸痛指南（如ESC/AHA 2021胸痛指南、国内急诊预检分级标准）脱节，不能未经复核就冻结为锚点；②'与标准一致率'是代理指标，单独优化会产生Goodhart效应（例如把大量病例推向多数类级别、在开发集上过拟合），而急诊胸痛的真正风险是低估分级（漏判ACS、主动脉夹层、肺栓塞）；③结果要用于急诊预检台，属高风险临床决策支持，上线需伦理/医务审批与影子模式验证，不能由Agent自主部署。因此需要：独立锚点（复核后的标准+结局裁定数据）、提示词优化内循环、留出集独立验证、低估分级反指标否决、过拟合/公平性审计、冲突仲裁、人工门控与停止交接，属于graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在不增加高危胸痛低估分级的前提下，迭代改写胸痛分诊助手提示词，使其在密封留出集上与经复核的科室胸痛分诊标准一致率提升，并形成可供科室决定是否进入影子模式试运行的证据包。",
+    "human_owner": "Bruce",
+    "observable_success": "在密封留出集上：加权kappa≥预设阈值且较基线提升；高危结局（ACS/主动脉夹层/肺栓塞/30天MACE）病例低估分级率不高于现行人工预检且95%CI上限≤预设上限；各亚组（性别、年龄≥75、糖尿病、非典型症状）无显著劣化；审计无数据泄漏与病例硬编码；Bruce与科室主任、医务/伦理签字批准影子模式方案。",
+    "metrics": [
+      "weighted_kappa_vs_reviewed_standard",
+      "exact_agreement_rate",
+      "high_risk_under_triage_rate",
+      "over_triage_rate",
+      "subgroup_under_triage_gap",
+      "holdout_dev_gap"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取经脱敏、伦理批准的历史胸痛预检病例与结局数据",
+      "在开发集上生成、修改、评估提示词候选",
+      "运行离线评测与审计脚本",
+      "向Bruce提交差异病例清单与标准修订建议",
+      "写入版本化的提示词候选库与评测报告"
+    ],
+    "forbidden_actions": [
+      "修改科室分诊标准文本或其复核结论",
+      "读取或基于密封留出集调参",
+      "在提示词中硬编码具体病例或患者标识",
+      "将助手接入真实预检流程或患者端",
+      "以一致率提升为由接受高危病例低估分级上升",
+      "处理未脱敏的患者身份信息",
+      "未经人工批准宣布可临床使用"
+    ]
+  },
+  "frozen_rules": [
+    "金标准在使用前必须由临床专家对照现行指南复核并签字，复核后版本在本轮优化期间冻结；Agent不得改写标准。",
+    "安全优先级：高危结局低估分级率 > 亚组公平性 > 与标准一致率 > 过度分级率。",
+    "任何候选若高危低估分级率高于基线或超过上限，直接否决，无论一致率多高。",
+    "密封留出集由数据管理者持有，优化Agent不可见；每个候选在留出集上评估次数受预算限制并记录。",
+    "标准与结局冲突的病例只能升级给人类裁定，不得由Agent自行判定哪方正确。",
+    "助手只作为预检护士的辅助建议，最终分级由护士作出；上线仅可先进入影子模式。",
+    "患者数据全程脱敏，遵守伦理批件范围。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 400
+  },
+  "failure_policy": "任一节点连续失败超过max_retries、留出集被泄漏、锚点过期未复核、或反指标否决连续3轮无可行候选时，冻结当前最佳已验证候选（或基线），停止优化并交由Bruce；不得放宽安全阈值继续迭代。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "达到observable_success全部条件，提交影子模式审批包",
+      "优化循环达到max_iterations或预算耗尽",
+      "留出集一致率连续3轮无显著提升（平台期）",
+      "高危低估分级反指标否决所有候选",
+      "发现数据泄漏、开发集-留出集差距超过阈值或病例硬编码",
+      "标准与结局冲突病例比例超过预设阈值，提示标准本身需修订",
+      "锚点超过max_age_days未复核"
+    ],
+    "artifact": "交接包：最佳候选提示词及版本差异、留出集评测报告（加权kappa、混淆矩阵、高危低估率及CI、亚组分析）、审计报告、标准-结局冲突病例清单与修订建议、影子模式试运行方案草案"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_reviewed_standard",
+      "source": "科室三年前胸痛分诊标准，经急诊/心内科专家对照现行胸痛指南与国内急诊预检分级标准复核修订后的签字版本",
+      "evidence_form": "版本号+复核记录+签字的标准文本与分级判定表",
+      "owner": "Bruce",
+      "freshness_rule": "每次启动优化前确认未超期；指南更新或冲突病例比例超阈值时必须重新复核",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2023-11-15"
+    },
+    {
+      "node_id": "anchor_outcome_labels",
+      "source": "历史胸痛就诊病例的最终诊断与30天结局（ACS、主动脉夹层、肺栓塞、MACE、死亡），由两名医师独立裁定",
+      "evidence_form": "脱敏病例结局裁定表（含裁定者、一致性kappa）",
+      "owner": "Bruce",
+      "freshness_rule": "数据集按年度追加新病例并重新裁定；数据抽取规则冻结",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "伦理批件",
+    "现行胸痛指南文本",
+    "历史预检病例脱敏数据"
+  ],
+  "nodes": [
+    {
+      "id": "anchor_reviewed_standard",
+      "kind": "anchor",
+      "responsibility": "提供经专家复核、冻结的胸痛分诊标准作为一致率参照；当前状态为'待复核'，复核签字前优化不得启动。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["科室原胸痛分诊标准", "现行胸痛指南文本"],
+        "outputs": ["reviewed_standard_v1"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "anchor_outcome_labels",
+      "kind": "anchor",
+      "responsibility": "提供独立于科室标准的结局真值，用于检测标准本身和助手的高危低估分级。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["历史预检病例脱敏数据", "伦理批件"],
+        "outputs": ["outcome_labels"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "data_curation",
+      "kind": "execution",
+      "responsibility": "按冻结规则整理病例，依据复核标准由两名护士/医师独立给出参照分级，按时间切分开发集与密封留出集（留出集交数据管理者封存），记录类别分布与亚组构成。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["历史预检病例脱敏数据", "reviewed_standard_v1", "outcome_labels"],
+        "outputs": ["dev_set", "sealed_holdout_set", "dataset_card"]
+      },
+      "evidence_sources": ["historical_cases", "reviewed_standard_v1", "outcome_labels"],
+      "side_effect": "internal-reversible",
+      "writes": ["dataset_store"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "gate_start",
+      "kind": "human_gate",
+      "responsibility": "Bruce确认：标准已复核签字、伦理批件覆盖本研究、数据集卡片与留出集封存合规、安全阈值与成功阈值预先登记；未通过则不启动优化。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["reviewed_standard_v1", "dataset_card", "伦理批件"],
+        "outputs": ["start_approval", "preregistered_thresholds"]
+      },
+      "cadence_tier": "human"
+    },
+    {
+      "id": "prompt_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "仅在开发集上分析错分病例，改写提示词（结构化问诊要素、危险信号清单、就高不就低规则），生成版本化候选；不得引用具体病例。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["dev_set", "reviewed_standard_v1", "start_approval", "revision_feedback"],
+        "outputs": ["prompt_candidate", "dev_metrics", "change_log"]
+      },
+      "max_iterations": 20,
+      "evidence_sources": ["dev_set", "reviewed_standard_v1"],
+      "optimizes": "weighted_kappa_vs_reviewed_standard",
+      "side_effect": "internal-reversible",
+      "writes": ["prompt_candidate_registry"],
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "holdout_verifier",
+      "kind": "verification_loop",
+      "responsibility": "以全新独立上下文在密封留出集上评估候选（固定温度、多次采样取稳定性），报告加权kappa、精确一致率、混淆矩阵与开发-留出差距；不向优化器回传病例级细节，只回传聚合指标。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["prompt_candidate", "sealed_holdout_set", "preregistered_thresholds"],
+        "outputs": ["holdout_report"]
+      },
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["sealed_holdout_set"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "safety_counter_metric",
+      "kind": "counter_metric_loop",
+      "responsibility": "以结局真值为准独立计算高危病例低估分级率（含95%CI）、过度分级率及亚组差异；超过基线或上限即否决候选。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["prompt_candidate", "sealed_holdout_set", "outcome_labels", "preregistered_thresholds"],
+        "outputs": ["safety_report", "safety_veto"]
+      },
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["outcome_labels", "sealed_holdout_set"],
+      "optimizes": "high_risk_under_triage_rate",
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "integrity_audit",
+      "kind": "audit_loop",
+      "responsibility": "审计过拟合与作弊：留出集访问日志、提示词中病例硬编码、对症状表述改写/顺序扰动的鲁棒性、多数类塌缩、开发-留出差距、亚组公平性。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["prompt_candidate", "change_log", "holdout_report", "safety_report"],
+        "outputs": ["audit_report"]
+      },
+      "max_iterations": 10,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["change_log", "holdout_access_log", "perturbation_suite"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "conflict_arbitration",
+      "kind": "arbitration",
+      "responsibility": "合并验证、反指标与审计结论，按冻结优先级决定候选接受/拒绝/回炉；把'助手与标准不一致但与结局一致'或'标准本身低估高危'的病例归入标准冲突清单，不判定标准对错。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["holdout_report", "safety_report", "safety_veto", "audit_report"],
+        "outputs": ["candidate_decision", "revision_feedback", "standard_conflict_cases"]
+      },
+      "priority_policy": "safety_veto > audit_failure > subgroup_gap > weighted_kappa_gain > over_triage",
+      "side_effect": "internal-reversible",
+      "writes": ["candidate_decision_log"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "standard_governance",
+      "kind": "governance_loop",
+      "responsibility": "监控锚点新鲜度、标准-结局冲突比例与指南更新；超过阈值时暂停优化，生成标准修订建议交临床专家复核（Agent不改标准）。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["standard_conflict_cases", "reviewed_standard_v1", "现行胸痛指南文本"],
+        "outputs": ["standard_revision_proposal", "pause_signal"]
+      },
+      "max_iterations": 4,
+      "evidence_sources": ["standard_conflict_cases", "guideline_text"],
+      "side_effect": "none",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "result_synthesis",
+      "kind": "synthesis",
+      "responsibility": "汇总最佳已接受候选、全部评测/审计报告、冲突病例与标准修订建议，起草影子模式试运行方案（护士独立分级、助手建议仅记录、不影响患者）。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["candidate_decision", "holdout_report", "safety_report", "audit_report", "standard_revision_proposal"],
+        "outputs": ["evidence_package", "shadow_mode_protocol_draft"]
+      },
+      "side_effect": "none",
+      "writes": ["evidence_package_store"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "gate_deployment",
+      "kind": "human_gate",
+      "responsibility": "Bruce联合科室主任、医务处与伦理委员会审阅证据包，决定是否进入影子模式；临床正式使用需影子模式前瞻数据另行审批，不在本系统权限内。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["evidence_package", "shadow_mode_protocol_draft"],
+        "outputs": ["deployment_decision"]
+      },
+      "side_effect": "high-risk",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "满足任一停止条件时冻结状态并把交接包交给Bruce。",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": ["evidence_package", "pause_signal", "deployment_decision"],
+        "outputs": ["handoff_package"]
+      },
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "anchor_reviewed_standard", "to": "data_curation", "relation": "anchors", "artifact": "reviewed_standard_v1"},
+    {"from": "anchor_outcome_labels", "to": "data_curation", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "anchor_reviewed_standard", "to": "gate_start", "relation": "feeds", "artifact": "reviewed_standard_v1"},
+    {"from": "data_curation", "to": "gate_start", "relation": "feeds", "artifact": "dataset_card"},
+    {"from": "gate_start", "to": "prompt_optimizer", "relation": "constrains", "artifact": "start_approval"},
+    {"from": "gate_start", "to": "holdout_verifier", "relation": "constrains", "artifact": "preregistered_thresholds"},
+    {"from": "gate_start", "to": "safety_counter_metric", "relation": "constrains", "artifact": "preregistered_thresholds"},
+    {"from": "data_curation", "to": "prompt_optimizer", "relation": "feeds", "artifact": "dev_set"},
+    {"from": "anchor_reviewed_standard", "to": "prompt_optimizer", "relation": "anchors", "artifact": "reviewed_standard_v1"},
+    {"from": "data_curation", "to": "holdout_verifier", "relation": "feeds", "artifact": "sealed_holdout_set"},
+    {"from": "data_curation", "to": "safety_counter_metric", "relation": "feeds", "artifact": "sealed_holdout_set"},
+    {"from": "anchor_outcome_labels", "to": "safety_counter_metric", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "prompt_optimizer", "to": "holdout_verifier", "relation": "feeds", "artifact": "prompt_candidate"},
+    {"from": "prompt_optimizer", "to": "safety_counter_metric", "relation": "feeds", "artifact": "prompt_candidate"},
+    {"from": "prompt_optimizer", "to": "integrity_audit", "relation": "feeds", "artifact": "change_log"},
+    {"from": "holdout_verifier", "to": "prompt_optimizer", "relation": "verifies", "artifact": "holdout_report"},
+    {"from": "holdout_verifier", "to": "conflict_arbitration", "relation": "feeds", "artifact": "holdout_report"},
+    {"from": "holdout_verifier", "to": "integrity_audit", "relation": "feeds", "artifact": "holdout_report"},
+    {"from": "safety_counter_metric", "to": "prompt_optimizer", "relation": "vetoes", "artifact": "safety_veto"},
+    {"from": "safety_counter_metric", "to": "conflict_arbitration", "relation": "feeds", "artifact": "safety_report"},
+    {"from": "safety_counter_metric", "to": "integrity_audit", "relation": "feeds", "artifact": "safety_report"},
+    {"from": "integrity_audit", "to": "prompt_optimizer", "relation": "observes", "artifact": "audit_report"},
+    {"from": "integrity_audit", "to": "conflict_arbitration", "relation": "feeds", "artifact": "audit_report"},
+    {"from": "conflict_arbitration", "to": "prompt_optimizer", "relation": "revises", "artifact": "revision_feedback"},
+    {"from": "conflict_arbitration", "to": "standard_governance", "relation": "escalates", "artifact": "standard_conflict_cases"},
+    {"from": "conflict_arbitration", "to": "result_synthesis", "relation": "feeds", "artifact": "candidate_decision"},
+    {"from": "standard_governance", "to": "anchor_reviewed_standard", "relation": "observes", "artifact": "standard_revision_proposal"},
+    {"from": "standard_governance", "to": "prompt_optimizer", "relation": "constrains", "artifact": "pause_signal"},
+    {"from": "standard_governance", "to": "result_synthesis", "relation": "feeds", "artifact": "standard_revision_proposal"},
+    {"from": "standard_governance", "to": "stop_handoff", "relation": "escalates", "artifact": "pause_signal"},
+    {"from": "result_synthesis", "to": "gate_deployment", "relation": "feeds", "artifact": "evidence_package"},
+    {"from": "result_synthesis", "to": "stop_handoff", "relation": "feeds", "artifact": "evidence_package"},
+    {"from": "gate_deployment", "to": "stop_handoff", "relation": "hands_off", "artifact": "deployment_decision"}
+  ]
+}

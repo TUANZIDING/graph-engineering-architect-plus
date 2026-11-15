@@ -1,0 +1,42 @@
+{
+ "schema_version": "1.1",
+ "title": "自修自测",
+ "mode": "graph",
+ "root_goal": {
+  "statement": "测试全绿",
+  "human_owner": "Bruce",
+  "observable_success": "CI 全部通过"
+ },
+ "nodes": [
+  {
+   "id": "fix",
+   "kind": "execution_loop",
+   "responsibility": "修代码并补充修改测试",
+   "optimizes": "pass_rate"
+  },
+  {
+   "id": "ci",
+   "kind": "verification_loop",
+   "responsibility": "运行测试"
+  },
+  {
+   "id": "merge",
+   "kind": "execution",
+   "responsibility": "全绿后自动合并"
+  }
+ ],
+ "edges": [
+  {
+   "from": "fix",
+   "to": "ci",
+   "relation": "revises",
+   "artifact": "tests"
+  },
+  {
+   "from": "ci",
+   "to": "merge",
+   "relation": "feeds",
+   "artifact": "green"
+  }
+ ]
+}

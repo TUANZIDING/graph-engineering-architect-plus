@@ -1,0 +1,507 @@
+{
+  "schema_version": "1.1",
+  "title": "ICU 72h readmission model weekly retraining control graph",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "Keep the deployed ICU 72-hour readmission risk model at least as accurate, calibrated and fair on future, unseen ICU discharges as the current model, without unsafe automatic replacement.",
+    "human_owner": "Bruce",
+    "observable_success": "On a frozen, time-forward holdout (discharges after the training window, with 72h follow-up complete, never seen by the trainer), the candidate shows AUC improvement >= pre-registered margin with CI lower bound > 0, calibration slope 0.8-1.2 and Brier not worse, no subgroup AUC drop > 0.03, and post-deployment shadow/prospective monitoring confirms it; Bruce signs each production swap.",
+    "out_of_scope": [
+      "Evaluating AUC on the same month used for training (in-sample AUC is not acceptance evidence)",
+      "Automatic replacement of the production model without human sign-off",
+      "Changing the outcome definition (72h ICU readmission), label window or acceptance thresholds by the agent",
+      "Clinical decision changes driven by the model without clinical governance"
+    ],
+    "metrics": [
+      "temporal_holdout_auc",
+      "calibration_slope",
+      "brier_score",
+      "subgroup_auc_gap",
+      "prospective_alert_ppv"
+    ]
+  },
+  "classification_rationale": "The brief as written is a single loop whose verifier (same-month AUC) is produced from the optimizer's own training data, so it is gameable and will select overfit models; auto-swap is a high-risk clinical side effect. A safe design needs an execution loop plus independent temporal-holdout verification, counter-metrics (calibration, subgroup, drift), an audit of data/label provenance, arbitration of conflicting signals and a human gate before deployment, with weekly vs monthly vs quarterly cadences. Hence graph_plus_loop.",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "Read de-identified ICU training extracts for the rolling training window",
+      "Train and tune candidate models in a sandbox",
+      "Write candidate model artifacts and training reports to the candidate registry",
+      "Propose threshold or anchor changes to governance"
+    ],
+    "forbidden_actions": [
+      "Read or query the temporal holdout set or its labels",
+      "Compute acceptance AUC on training data",
+      "Deploy or replace the production model",
+      "Modify evaluation code, acceptance thresholds, holdout definition or outcome definition",
+      "Delete or suppress failed candidate results"
+    ]
+  },
+  "frozen_rules": [
+    "Acceptance evidence comes only from the time-forward holdout: discharges strictly after the training window with complete 72h follow-up, held by the evaluation service, inaccessible to the trainer",
+    "Outcome definition (unplanned ICU readmission within 72h of ICU discharge) and label lag are frozen",
+    "Pre-registered acceptance thresholds: AUC delta margin with bootstrap CI lower bound > 0, calibration slope 0.8-1.2, Brier non-inferior, subgroup AUC drop <= 0.03",
+    "Production swap requires Bruce's signed approval and a rollback plan; previous model kept warm",
+    "Evaluation code is versioned and hashed; trainer has no write access"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "failed": "Keep current production model; log candidate failure with evidence; next weekly cycle starts fresh",
+    "blocked": "If holdout labels are incomplete, stale or data pipeline audit fails, freeze retraining and escalate to Bruce",
+    "budget_exhausted": "Stop tuning, report best candidate as not-promoted, keep production model"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: candidate passed holdout, counter-metric and audit checks and Bruce approved swap (or rejected it)",
+      "failed: candidate did not beat production on holdout; production unchanged",
+      "blocked: holdout stale/contaminated or provenance audit failed",
+      "budget_exhausted: retry/compute budget used without an acceptable candidate"
+    ],
+    "artifact": "weekly-handoff.md"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "Patient safety and calibration > subgroup fairness > data provenance integrity > holdout AUC gain > retraining cadence. Any veto from verification, counter-metric or audit blocks promotion; an AUC gain never overrides a safety/calibration/fairness veto."
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "Threshold change",
+      "Production model swap"
+    ]
+  },
+  "verification": {
+    "independence_statement": "The holdout evaluator is a separate deterministic service with its own frozen code, reading time-forward discharges and labels from the EHR outcome registry that the trainer cannot read; the provenance auditor reads raw EHR admission/discharge records independently of the training extract.",
+    "checks": [
+      {
+        "id": "holdout-auc",
+        "criterion": "AUC delta CI lower bound > 0 vs production on time-forward holdout",
+        "verifier_node": "holdout_verifier"
+      },
+      {
+        "id": "calibration-fairness",
+        "criterion": "Holdout verifier gates on AUC; calibration/fairness/drift vetoes come from counter_metrics node",
+        "verifier_node": "holdout_verifier"
+      },
+      {
+        "id": "provenance",
+        "criterion": "Provenance audit report must be clean (leakage, label definition) before holdout verdict is accepted",
+        "verifier_node": "holdout_verifier"
+      }
+    ]
+  },
+  "external_inputs": [
+    "ICU training extract (rolling window)",
+    "EHR outcome registry",
+    "raw EHR ADT records",
+    "production model"
+  ],
+  "anchors": [
+    {
+      "node_id": "holdout_anchor",
+      "source": "EHR outcome registry: ICU discharges in the week(s) after the training window with complete 72h follow-up",
+      "evidence_form": "Frozen time-forward holdout set with observed 72h readmission labels, hash-registered",
+      "owner": "Bruce",
+      "freshness_rule": "Rebuilt weekly from discharges after training cutoff; must have complete 72h follow-up; invalid if any overlap with training window",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "holdout_anchor",
+      "kind": "anchor",
+      "responsibility": "Provide frozen, trainer-inaccessible time-forward holdout with observed labels",
+      "owner": "Bruce",
+      "cadence": "weekly",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "EHR outcome registry"
+        ],
+        "outputs": [
+          "holdout set hash"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_outcome_registry"
+      ],
+      "side_effect": "none"
+    },
+    {
+      "id": "trainer_loop",
+      "kind": "execution_loop",
+      "responsibility": "Weekly retrain candidate on rolling last-month ICU extract within sandbox; report in-sample metrics only as diagnostics",
+      "owner": "AI agent",
+      "cadence": "weekly",
+      "cadence_tier": "fast",
+      "max_iterations": 5,
+      "contract": {
+        "inputs": [
+          "ICU training extract (rolling window)"
+        ],
+        "outputs": [
+          "candidate model",
+          "training report"
+        ]
+      },
+      "evidence_sources": [
+        "icu_training_extract"
+      ],
+      "optimizes": "temporal_holdout_auc",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "candidate_registry"
+      ]
+    },
+    {
+      "id": "holdout_verifier",
+      "kind": "verification_loop",
+      "responsibility": "Score candidate and production model on frozen holdout with frozen code; bootstrap AUC delta; veto if not superior",
+      "owner": "Evaluation service",
+      "cadence": "per candidate",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "candidate model",
+          "holdout set hash",
+          "production model"
+        ],
+        "outputs": [
+          "holdout evaluation report"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_outcome_registry"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "evaluation_reports"
+      ]
+    },
+    {
+      "id": "counter_metrics",
+      "kind": "counter_metric_loop",
+      "responsibility": "Check calibration, Brier, subgroup AUC gaps, alert-rate/PPV at operating threshold and covariate drift on holdout; veto cheap AUC wins",
+      "owner": "Evaluation service",
+      "cadence": "per candidate",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "candidate model",
+          "holdout set hash"
+        ],
+        "outputs": [
+          "counter-metric report"
+        ]
+      },
+      "evidence_sources": [
+        "ehr_outcome_registry"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "counter_reports"
+      ]
+    },
+    {
+      "id": "provenance_audit",
+      "kind": "audit_loop",
+      "responsibility": "Monthly audit of label definition, leakage between training and holdout, cohort shifts and pipeline changes against raw EHR ADT records; post-deployment prospective performance review",
+      "owner": "Clinical data steward",
+      "cadence": "monthly",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "contract": {
+        "inputs": [
+          "raw EHR ADT records",
+          "training report",
+          "deployment log"
+        ],
+        "outputs": [
+          "audit report"
+        ]
+      },
+      "evidence_sources": [
+        "raw_ehr_adt"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "audit_reports"
+      ]
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "Combine verifier, counter-metric and audit verdicts under priority policy into promote / hold recommendation",
+      "owner": "Bruce",
+      "cadence": "per candidate",
+      "cadence_tier": "medium",
+      "priority_policy": "Safety/calibration > fairness > provenance > AUC gain; any veto blocks promotion",
+      "contract": {
+        "inputs": [
+          "holdout evaluation report",
+          "counter-metric report",
+          "audit report"
+        ],
+        "outputs": [
+          "promotion recommendation"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "promotion_recommendations"
+      ]
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "Quarterly review of thresholds, holdout design, outcome definition and whether the model still serves the clinical goal; proposals require Bruce approval",
+      "owner": "Bruce",
+      "cadence": "quarterly",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "contract": {
+        "inputs": [
+          "audit report",
+          "deployment log"
+        ],
+        "outputs": [
+          "governance decision"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "frozen_rules_registry"
+      ]
+    },
+    {
+      "id": "deploy_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce signs or rejects the production swap based on arbiter recommendation and vetoes",
+      "owner": "Bruce",
+      "cadence": "on demand",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "promotion recommendation"
+        ],
+        "outputs": [
+          "signed approval record"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "approval_records"
+      ]
+    },
+    {
+      "id": "deployer",
+      "kind": "execution",
+      "responsibility": "Execute approved swap: shadow run, canary, full rollout, with automatic rollback to warm previous model on monitoring alarm",
+      "owner": "MLOps service",
+      "cadence": "on approval",
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "signed approval record",
+          "candidate model"
+        ],
+        "outputs": [
+          "deployment log"
+        ]
+      },
+      "side_effect": "high-risk",
+      "writes": [
+        "production_model"
+      ]
+    },
+    {
+      "id": "stop",
+      "kind": "stop_handoff",
+      "responsibility": "Record terminal state and hand off weekly report",
+      "owner": "Bruce",
+      "cadence": "weekly",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "deployment log"
+        ],
+        "outputs": [
+          "weekly-handoff.md"
+        ]
+      },
+      "side_effect": "none",
+      "writes": [
+        "handoff"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "trainer_loop",
+      "to": "holdout_verifier",
+      "relation": "feeds",
+      "artifact": "candidate model"
+    },
+    {
+      "from": "trainer_loop",
+      "to": "counter_metrics",
+      "relation": "feeds",
+      "artifact": "candidate model"
+    },
+    {
+      "from": "trainer_loop",
+      "to": "provenance_audit",
+      "relation": "feeds",
+      "artifact": "training report"
+    },
+    {
+      "from": "holdout_anchor",
+      "to": "holdout_verifier",
+      "relation": "anchors",
+      "artifact": "holdout set hash"
+    },
+    {
+      "from": "holdout_anchor",
+      "to": "counter_metrics",
+      "relation": "anchors",
+      "artifact": "holdout set hash"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "trainer_loop",
+      "relation": "vetoes",
+      "artifact": "holdout evaluation report"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "trainer_loop",
+      "relation": "vetoes",
+      "artifact": "counter-metric report"
+    },
+    {
+      "from": "provenance_audit",
+      "to": "trainer_loop",
+      "relation": "constrains",
+      "artifact": "audit report"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "arbiter",
+      "relation": "verifies",
+      "artifact": "holdout evaluation report"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "arbiter",
+      "relation": "verifies",
+      "artifact": "counter-metric report"
+    },
+    {
+      "from": "provenance_audit",
+      "to": "arbiter",
+      "relation": "verifies",
+      "artifact": "audit report"
+    },
+    {
+      "from": "arbiter",
+      "to": "deploy_gate",
+      "relation": "escalates",
+      "artifact": "promotion recommendation"
+    },
+    {
+      "from": "provenance_audit",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "audit report"
+    },
+    {
+      "from": "governance",
+      "to": "holdout_verifier",
+      "relation": "revises",
+      "artifact": "governance decision"
+    },
+    {
+      "from": "governance",
+      "to": "trainer_loop",
+      "relation": "constrains",
+      "artifact": "governance decision"
+    },
+    {
+      "from": "arbiter",
+      "to": "trainer_loop",
+      "relation": "arbitrates",
+      "artifact": "priority-resolved retraining directive"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "deploy_gate",
+      "relation": "vetoes",
+      "artifact": "holdout evaluation report"
+    },
+    {
+      "from": "counter_metrics",
+      "to": "deploy_gate",
+      "relation": "vetoes",
+      "artifact": "counter-metric report"
+    },
+    {
+      "from": "holdout_anchor",
+      "to": "deploy_gate",
+      "relation": "anchors",
+      "artifact": "holdout set hash"
+    },
+    {
+      "from": "deploy_gate",
+      "to": "deployer",
+      "relation": "constrains",
+      "artifact": "signed approval record"
+    },
+    {
+      "from": "trainer_loop",
+      "to": "deployer",
+      "relation": "feeds",
+      "artifact": "candidate model"
+    },
+    {
+      "from": "deployer",
+      "to": "governance",
+      "relation": "feeds",
+      "artifact": "deployment log"
+    },
+    {
+      "from": "deployer",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "deployment log"
+    },
+    {
+      "from": "deployer",
+      "to": "provenance_audit",
+      "relation": "observes",
+      "artifact": "deployment log"
+    }
+  ]
+}

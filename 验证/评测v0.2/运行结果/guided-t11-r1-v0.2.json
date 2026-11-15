@@ -1,0 +1,524 @@
+{
+ "schema_version": "1.1",
+ "title": "Meta 分析数据提取与合并分析复核控制图",
+ "mode": "graph",
+ "state": "designed",
+ "classification_rationale": "原流程里 Agent B 只读 Agent A 的提取表重跑合并分析，两边一致只证明计算可复现，不证明提取正确（共享来源循环互证 / 看守剧场）。提取错误、效应方向错、SD/SE 混用、重复队列等都会被原样复制。需要独立回到原文的双人提取、可追溯锚点、反指标抽查、分歧仲裁和人工签字门，属于多回路相互约束，故用 graph。",
+ "root_goal": {
+  "statement": "论文中报告的合并效应量、置信区间和异质性，准确反映 40 篇纳入文献原文中的数据，并按预注册方案计算。",
+  "human_owner": "Bruce",
+  "observable_success": "每个提取单元格都有原文页码/表号定位并经独立双提取一致或经仲裁回原文裁定；人工随机抽查（≥10% 研究 + 全部权重前 5 的研究）与原文零关键差错；锁定提取表经确定性脚本合并的结果与论文数字逐项一致；Bruce 签字。",
+  "metrics": [
+   "原文抽查关键差错数",
+   "双提取单元格一致率",
+   "合并结果复现一致"
+  ],
+  "out_of_scope": [
+   "文献检索与纳入/排除筛选",
+   "偏倚风险评价",
+   "论文讨论部分写作"
+  ]
+ },
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "读取冻结的原文 PDF 副本",
+   "写入各自的提取表",
+   "运行锁定版本的合并分析脚本",
+   "生成分歧清单与审计报告"
+  ],
+  "forbidden_actions": [
+   "修改原文 PDF 或预注册方案",
+   "Agent B 在独立提取阶段读取 Agent A 的提取表",
+   "执行者修改核对规则、抽查规则或分析脚本",
+   "未经 Bruce 签字把结果写入论文",
+   "为提高一致率而删除或合并研究"
+  ]
+ },
+ "frozen_rules": [
+  "预注册方案（结局、效应量类型、模型、亚组）冻结，改动需 Bruce 批准并留记录",
+  "40 篇原文 PDF 副本按哈希冻结",
+  "提取字段字典与单位/方向约定冻结",
+  "一致不等于正确：只有回到原文的独立提取或人工抽查才算复核",
+  "合并分析脚本版本锁定"
+ ],
+ "approval": {
+  "status": "pending"
+ },
+ "budget": {
+  "max_agents": 6,
+  "max_concurrency": 2,
+  "max_retries": 2,
+  "max_cost_units": 100
+ },
+ "failure_policy": {
+  "failed": "人工抽查发现关键差错或合理性检查两轮仍失败 → 该批研究退回重新独立双提取；复算与论文数字不一致 → 阻断写入",
+  "blocked": "原文缺关键数据或分歧两轮仲裁仍无法从原文确定 → 标记不确定，升级 Bruce 决定联系作者或做敏感性分析",
+  "budget_exhausted": "重试或成本用尽 → 停止，交付当前锁定状态与未决清单给 Bruce"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "completed: 全部检查通过且 Bruce 签字",
+   "blocked: 原文缺数据无法提取且需联系作者",
+   "failed: 抽查差错率超阈值两轮",
+   "budget_exhausted: 重试或成本用尽"
+  ],
+  "artifact": "锁定提取表 + 来源定位 + 分歧/仲裁日志 + 抽查报告 + 合并分析输出 + 签字记录"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "anchor_sources",
+   "source": "40 篇纳入文献原文 PDF（哈希冻结）与预注册方案",
+   "evidence_form": "原文表格/正文的页码与表号定位",
+   "owner": "Bruce",
+   "freshness_rule": "纳入集合或方案变更时失效，需重新冻结并重新确认",
+   "frozen": true,
+   "max_age_days": 180,
+   "last_confirmed": "2026-11-15"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "anchor_sources",
+   "kind": "anchor",
+   "responsibility": "提供冻结的原文与方案，作为唯一事实来源",
+   "owner": "Bruce",
+   "cadence": "按项目冻结一次",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "纳入文献清单"
+    ],
+    "outputs": [
+     "冻结原文副本",
+     "预注册方案",
+     "字段字典"
+    ]
+   },
+   "side_effect": "none"
+  },
+  {
+   "id": "extract_a",
+   "kind": "execution_loop",
+   "responsibility": "Agent A 从原文提取效应量、样本量、方差等，每个单元格附页码/表号与原句",
+   "owner": "Agent A",
+   "cadence": "每篇文献一次迭代",
+   "cadence_tier": "fast",
+   "max_iterations": 2,
+   "context_scope": "own",
+   "evidence_sources": [
+    "冻结原文副本"
+   ],
+   "optimizes": "原文抽查关键差错数",
+   "side_effect": "internal-reversible",
+   "writes": [
+    "提取表A"
+   ],
+   "contract": {
+    "inputs": [
+     "冻结原文副本",
+     "字段字典"
+    ],
+    "outputs": [
+     "提取表A（含来源定位）"
+    ]
+   }
+  },
+  {
+   "id": "extract_b_blind",
+   "kind": "verification_loop",
+   "responsibility": "Agent B 在不接触提取表A的前提下，独立从原文双提取，并做单元格级比对，产出分歧清单；对无定位或不一致单元格有否决权",
+   "owner": "Agent B（不同模型/新上下文）",
+   "cadence": "每批文献",
+   "cadence_tier": "medium",
+   "max_iterations": 2,
+   "context_scope": "fresh-independent",
+   "evidence_sources": [
+    "冻结原文副本"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "提取表B",
+    "分歧清单"
+   ],
+   "contract": {
+    "inputs": [
+     "冻结原文副本",
+     "字段字典",
+     "提取表A（独立提取完成后才解封用于比对）"
+    ],
+    "outputs": [
+     "提取表B",
+     "分歧清单",
+     "否决记录"
+    ]
+   }
+  },
+  {
+   "id": "plausibility_counter",
+   "kind": "counter_metric_loop",
+   "responsibility": "反指标：拆穿“一致率高但都错”。确定性检查 SE/SD 与 CI、n 的一致性、单位与效应方向、样本量合计、重复队列/重复发表、离群权重；高一致率但规则检查失败即否决",
+   "owner": "确定性脚本",
+   "cadence": "每版提取表",
+   "cadence_tier": "medium",
+   "max_iterations": 1,
+   "context_scope": "fresh-independent",
+   "evidence_sources": [
+    "冻结原文副本",
+    "预注册方案"
+   ],
+   "side_effect": "none",
+   "writes": [
+    "合理性检查报告"
+   ],
+   "contract": {
+    "inputs": [
+     "对账后提取表",
+     "提取表A",
+     "预注册方案",
+     "冻结原文副本"
+    ],
+    "outputs": [
+     "合理性检查报告"
+    ]
+   }
+  },
+  {
+   "id": "reconcile_arbiter",
+   "kind": "arbitration",
+   "responsibility": "对分歧和合理性失败逐条回原文裁定；无法裁定的升级 Bruce",
+   "owner": "第三提取者（人或独立 Agent）+ Bruce 终裁",
+   "cadence": "每批分歧",
+   "cadence_tier": "medium",
+   "priority_policy": "原文证据 > 预注册方案 > 合理性规则 > 双提取一致；任何来源定位缺失的单元格不得进入锁定表；冲突不可裁定时保留为不确定并做敏感性分析而非取平均",
+   "evidence_sources": [
+    "冻结原文副本"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "锁定提取表",
+    "仲裁日志"
+   ],
+   "contract": {
+    "inputs": [
+     "提取表A",
+     "提取表B",
+     "分歧清单",
+     "合理性检查报告",
+     "冻结原文副本"
+    ],
+    "outputs": [
+     "锁定提取表",
+     "仲裁日志"
+    ]
+   }
+  },
+  {
+   "id": "pooled_analysis",
+   "kind": "execution",
+   "responsibility": "用锁定版本脚本对锁定提取表跑合并分析（两种实现交叉复算仅证明计算可复现，不证明提取正确）",
+   "owner": "确定性脚本",
+   "cadence": "锁定表每版一次",
+   "cadence_tier": "medium",
+   "evidence_sources": [
+    "锁定提取表",
+    "预注册方案"
+   ],
+   "side_effect": "internal-reversible",
+   "writes": [
+    "合并分析结果"
+   ],
+   "contract": {
+    "inputs": [
+     "锁定提取表",
+     "预注册方案"
+    ],
+    "outputs": [
+     "合并分析结果",
+     "复算一致报告"
+    ]
+   }
+  },
+  {
+   "id": "human_spot_audit",
+   "kind": "audit_loop",
+   "responsibility": "Bruce 或其指定合作者按冻结规则随机抽 ≥10% 研究及全部权重前5研究，逐格回原文核对；检查方案与字段字典未被改动",
+   "owner": "Bruce",
+   "cadence": "每次锁定表定稿前",
+   "cadence_tier": "slow",
+   "max_iterations": 2,
+   "context_scope": "fresh-independent",
+   "evidence_sources": [
+    "冻结原文副本"
+   ],
+   "side_effect": "none",
+   "writes": [
+    "抽查报告"
+   ],
+   "contract": {
+    "inputs": [
+     "锁定提取表",
+     "冻结原文副本",
+     "仲裁日志",
+     "合并分析结果"
+    ],
+    "outputs": [
+     "抽查报告"
+    ]
+   }
+  },
+  {
+   "id": "governance",
+   "kind": "governance_loop",
+   "responsibility": "审议对方案、字段字典、抽查比例、纳入集合的变更提议；只有 Bruce 批准后生效",
+   "owner": "Bruce",
+   "cadence": "有变更提议时",
+   "cadence_tier": "governance",
+   "side_effect": "none",
+   "writes": [
+    "变更记录"
+   ],
+   "contract": {
+    "inputs": [
+     "变更提议",
+     "抽查报告"
+    ],
+    "outputs": [
+     "变更批准/驳回记录"
+    ]
+   }
+  },
+  {
+   "id": "change_gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 批准或驳回对冻结原文集、预注册方案、字段字典、抽查规则的变更；只有此门能改锚点",
+   "owner": "Bruce",
+   "cadence": "有变更提议时",
+   "cadence_tier": "human",
+   "side_effect": "none",
+   "contract": {
+    "inputs": [
+     "变更建议包"
+    ],
+    "outputs": [
+     "经批准的变更记录"
+    ]
+   }
+  },
+  {
+   "id": "signoff_gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 核对所有检查通过、复算数字与论文一致后签字，才允许写入论文",
+   "owner": "Bruce",
+   "cadence": "定稿前一次",
+   "cadence_tier": "human",
+   "side_effect": "none",
+   "contract": {
+    "inputs": [
+     "合并分析结果",
+     "抽查报告",
+     "仲裁日志",
+     "合理性检查报告"
+    ],
+    "outputs": [
+     "签字记录"
+    ]
+   }
+  },
+  {
+   "id": "handoff",
+   "kind": "stop_handoff",
+   "responsibility": "终态交接：仅在签字后把锁定结果写入论文；否则报告 blocked/failed/budget_exhausted",
+   "owner": "Bruce",
+   "cadence": "终态时",
+   "cadence_tier": "human",
+   "contract": {
+    "inputs": [
+     "签字记录"
+    ],
+    "outputs": [
+     "终态交接包"
+    ]
+   },
+   "side_effect": "high-risk"
+  }
+ ],
+ "edges": [
+  {
+   "from": "anchor_sources",
+   "to": "extract_a",
+   "relation": "feeds",
+   "artifact": "冻结原文副本 + 字段字典"
+  },
+  {
+   "from": "anchor_sources",
+   "to": "extract_b_blind",
+   "relation": "anchors",
+   "artifact": "冻结原文副本 + 字段字典"
+  },
+  {
+   "from": "anchor_sources",
+   "to": "plausibility_counter",
+   "relation": "anchors",
+   "artifact": "冻结原文副本 + 预注册方案"
+  },
+  {
+   "from": "anchor_sources",
+   "to": "reconcile_arbiter",
+   "relation": "anchors",
+   "artifact": "冻结原文副本"
+  },
+  {
+   "from": "anchor_sources",
+   "to": "human_spot_audit",
+   "relation": "anchors",
+   "artifact": "冻结原文副本"
+  },
+  {
+   "from": "extract_a",
+   "to": "extract_b_blind",
+   "relation": "feeds",
+   "artifact": "提取表A（独立提取完成后才解封用于比对）"
+  },
+  {
+   "from": "extract_b_blind",
+   "to": "extract_a",
+   "relation": "vetoes",
+   "artifact": "分歧清单/否决记录"
+  },
+  {
+   "from": "extract_b_blind",
+   "to": "reconcile_arbiter",
+   "relation": "escalates",
+   "artifact": "分歧清单 + 提取表A/B"
+  },
+  {
+   "from": "reconcile_arbiter",
+   "to": "plausibility_counter",
+   "relation": "feeds",
+   "artifact": "对账后提取表"
+  },
+  {
+   "from": "plausibility_counter",
+   "to": "reconcile_arbiter",
+   "relation": "vetoes",
+   "artifact": "合理性检查报告"
+  },
+  {
+   "from": "reconcile_arbiter",
+   "to": "pooled_analysis",
+   "relation": "feeds",
+   "artifact": "锁定提取表"
+  },
+  {
+   "from": "pooled_analysis",
+   "to": "human_spot_audit",
+   "relation": "feeds",
+   "artifact": "合并分析结果 + 复算一致报告"
+  },
+  {
+   "from": "reconcile_arbiter",
+   "to": "human_spot_audit",
+   "relation": "feeds",
+   "artifact": "锁定提取表 + 仲裁日志"
+  },
+  {
+   "from": "human_spot_audit",
+   "to": "reconcile_arbiter",
+   "relation": "vetoes",
+   "artifact": "抽查报告（关键差错→退回重提）"
+  },
+  {
+   "from": "human_spot_audit",
+   "to": "signoff_gate",
+   "relation": "constrains",
+   "artifact": "抽查报告"
+  },
+  {
+   "from": "plausibility_counter",
+   "to": "signoff_gate",
+   "relation": "constrains",
+   "artifact": "合理性检查报告"
+  },
+  {
+   "from": "reconcile_arbiter",
+   "to": "governance",
+   "relation": "escalates",
+   "artifact": "不可裁定项/变更提议"
+  },
+  {
+   "from": "pooled_analysis",
+   "to": "signoff_gate",
+   "relation": "feeds",
+   "artifact": "合并分析结果"
+  },
+  {
+   "from": "signoff_gate",
+   "to": "handoff",
+   "relation": "hands_off",
+   "artifact": "签字记录"
+  },
+  {
+   "from": "governance",
+   "to": "change_gate",
+   "relation": "escalates",
+   "artifact": "变更建议包（含理由与影响评估）"
+  },
+  {
+   "from": "change_gate",
+   "to": "anchor_sources",
+   "relation": "revises",
+   "artifact": "经批准的变更记录（重新冻结并更新哈希）"
+  },
+  {
+   "from": "extract_a",
+   "to": "plausibility_counter",
+   "relation": "feeds",
+   "artifact": "提取表A"
+  },
+  {
+   "from": "extract_b_blind",
+   "to": "reconcile_arbiter",
+   "relation": "feeds",
+   "artifact": "提取表B"
+  },
+  {
+   "from": "anchor_sources",
+   "to": "pooled_analysis",
+   "relation": "feeds",
+   "artifact": "预注册方案"
+  },
+  {
+   "from": "human_spot_audit",
+   "to": "governance",
+   "relation": "feeds",
+   "artifact": "抽查报告"
+  },
+  {
+   "from": "signoff_gate",
+   "to": "handoff",
+   "relation": "constrains",
+   "artifact": "签字记录（approval-record）"
+  },
+  {
+   "from": "human_spot_audit",
+   "to": "extract_a",
+   "relation": "observes",
+   "artifact": "抽查报告中的差错分布"
+  },
+  {
+   "from": "extract_a",
+   "to": "reconcile_arbiter",
+   "relation": "feeds",
+   "artifact": "提取表A"
+  }
+ ],
+ "external_inputs": [
+  "纳入文献清单",
+  "变更提议"
+ ]
+}

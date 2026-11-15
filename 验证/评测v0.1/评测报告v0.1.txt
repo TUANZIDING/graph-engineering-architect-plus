@@ -1,0 +1,24 @@
+unguided  n= 6  任务通过率    83%  断言通过率    97%  结构通过率    33%
+guided    n= 6  任务通过率    83%  断言通过率    97%  结构通过率   100%
+
+guided-t1-r1-v0.1.json           mode=graph_plus_loop  语义 100% 结构 通过  未过：—
+guided-t2-r1-v0.1.json           mode=graph_plus_loop  语义 100% 结构 通过  未过：—
+guided-t3-r1-v0.1.json           mode=graph_plus_loop  语义 100% 结构 通过  未过：—
+guided-t4-r1-v0.1.json           mode=graph_plus_loop  语义  83% 结构 通过  未过：['发布前带教老师审核']
+guided-t5-r1-v0.1.json           mode=linear_workflow  语义 100% 结构 通过  未过：—
+guided-t6-r1-v0.1.json           mode=direct           语义 100% 结构 通过  未过：—
+unguided-t1-r1-v0.1.json         mode=graph_plus_loop  语义  83% 结构 未过  未过：['留出数据不喂给调参回路（防泄漏）']
+unguided-t2-r1-v0.1.json         mode=graph_plus_loop  语义 100% 结构 未过  未过：—
+unguided-t3-r1-v0.1.json         mode=graph_plus_loop  语义 100% 结构 未过  未过：—
+unguided-t4-r1-v0.1.json         mode=graph_plus_loop  语义 100% 结构 未过  未过：—
+unguided-t5-r1-v0.1.json         mode=linear_workflow  语义 100% 结构 通过  未过：—
+unguided-t6-r1-v0.1.json         mode=direct           语义 100% 结构 通过  未过：—
+
+== 解读（2026-11-15 18:20）==
+1. 语义主指标：无 Skill 与有 Skill 各 5/6 任务通过、断言均 97%，n=1 下看不出提升（天花板效应：任务对基座模型偏容易）。
+2. 两处未通过都需人工复核：
+   - guided-t4「发布前带教老师审核」：图里有 owner=带教老师 的 human_gate，且 forbidden 写了“未经带教老师签字发布题目”，属评分器正则漏判（假阴性）。事后不改分，v0.2 再修。
+   - unguided-t1「防泄漏」：本地留出集通过 anchors 边直接连到三个调参回路，调参会对留出集过拟合，判为真问题。
+3. 结构分 100% vs 33%：是 Skill 自己的尺子，偏向 guided；但 unguided-t1 的 E-VNOTEETH/E-GOODHART/E-GATEFIRST 是真实设计缺陷。
+4. 发现 geaplus-v1.1 的 diagnose 在 root_goal.metrics 为对象列表时崩溃（TypeError: unhashable type: 'dict'），unguided-t2/t3/t4 都触发。评分器已改为结构崩溃时仍计语义分。
+5. 局限：任务、断言、标准答案与 Skill 同一作者；每格只跑 1 次。

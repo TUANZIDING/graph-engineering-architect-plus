@@ -1,0 +1,662 @@
+{
+  "schema_version": "1.1",
+  "title": "Meta分析提取-合并-写作控制图（双独立提取+溯源审计）",
+  "mode": "graph",
+  "state": "designed",
+  "classification": {
+    "mode": "graph",
+    "rationale": "原流程的'复核'是共享来源循环互证：Agent B 读 Agent A 的同一张提取表重算，只能验证算术，提取错误（SD/SE混淆、取错时间点、重复队列、单位错）会被两边一致地复制，'一致'是必然而非证据。需要以原文PDF为冻结锚点的独立双提取验证者、仲裁、反指标重算与人工溯源审计，并在写入论文（不可轻易撤回的高风险副作用）前设Bruce签字门，因此是graph而非单回路。"
+  },
+  "root_goal": {
+    "statement": "论文中报告的合并效应量及其CI、异质性与敏感性结果，忠实反映40篇纳入文献原文中的数据，并按预注册方案计算",
+    "human_owner": "Bruce",
+    "observable_success": "锁定提取表每个字段可追溯到原文页码/表号；独立双提取不一致100%经原文裁决并留档；人工溯源审计（≥20%随机+高权重研究）零未纠正错误；两套软件重算结果在舍入误差内一致；Bruce签字的版本与论文数字、表哈希、代码版本一致",
+    "metrics": [
+      "extraction_completeness",
+      "double_extraction_agreement",
+      "source_audit_error_rate",
+      "recompute_concordance"
+    ],
+    "out_of_scope": [
+      "文献检索与纳入筛选本身（另需双人筛选流程）",
+      "偏倚风险/GRADE评价",
+      "期刊投稿与对外发布"
+    ]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "read frozen PDFs",
+      "write own extraction table",
+      "run deterministic analysis scripts",
+      "propose protocol amendments",
+      "draft manuscript results after approval"
+    ],
+    "forbidden_actions": [
+      "modify or replace source PDFs or hash manifest",
+      "edit codebook, analysis plan or thresholds without Bruce approval",
+      "impute or guess missing values without logging as derived",
+      "let verifier see table A before table C is locked",
+      "choose analysis variant by significance or effect direction",
+      "write results into manuscript without approval_record",
+      "submit or post manuscript"
+    ]
+  },
+  "frozen_rules": [
+    "原文PDF集合与哈希清单冻结，仅Bruce可替换",
+    "编码手册、效应量优先规则、分析计划冻结；改动=修正提案+Bruce批准+论文报告偏离",
+    "双提取者必须盲于表A直至表C锁定",
+    "不一致按原文裁决，不取平均不按多数票",
+    "两个Agent对同一张表的计算一致不构成复核",
+    "一致率阈值与审计抽样比例不得被执行回路下调"
+  ],
+  "governance": {
+    "goal_change": "human_approval",
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "原文PDF证据 > 预注册方案 > 双提取一致 > 结果是否显著 > 进度"
+    },
+    "stop_conditions": {
+      "success": "签字版本写入论文并交接",
+      "failure": "原文无法支持关键字段或审计发现系统性错误且无法纠正",
+      "escalation": "不一致无法从原文裁决、需联系原作者、或需修改方案",
+      "budget": "重提取超过2轮仍不达标"
+    }
+  },
+  "verification": {
+    "independence_statement": "验证者直接读原文PDF而非表A，使用不同模型家族与全新上下文，表C锁定前看不到表A；人工审计者独立对照原文；重算使用另一套软件",
+    "checks": [
+      {
+        "verifier_node": "blind_double_extraction",
+        "criterion": "字段级一致率达预设阈值（如kappa≥0.8）且全部不一致经原文裁决"
+      }
+    ]
+  },
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 100
+  },
+  "failure_policy": {
+    "blocked": "双提取不一致未决、重算不符或审计发现未纠正错误时阻断写入论文，升级Bruce",
+    "failed": "系统性提取错误无法从原文纠正，以failed交接",
+    "budget_exhausted": "重提取超过2轮仍不达标，停止并交Bruce",
+    "rule": "绝不以'两个Agent结果一致'宣告完成"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: approved version written with reproducibility package",
+      "blocked: unresolved source discrepancies",
+      "failed: systematic extraction error not correctable",
+      "budget_exhausted: re-extraction rounds exceeded"
+    ],
+    "artifact": "handoff_note with locked table hash, adjudication log, audit signoff, code version"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_source_pdfs",
+      "source": "source_pdfs_40",
+      "evidence_form": "原文全文PDF+补充材料，SHA-256哈希清单，页码/表号级引用",
+      "owner": "Bruce",
+      "freshness_rule": "研究锁定时冻结；检出勘误/撤稿时由Bruce更新并重跑受影响研究",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_protocol",
+      "source": "preregistered protocol + extraction codebook + analysis plan",
+      "evidence_form": "PROSPERO/OSF注册记录与版本化编码手册",
+      "owner": "Bruce",
+      "freshness_rule": "仅经批准修正更新，版本号与日期留档",
+      "frozen": true,
+      "max_age_days": 365,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": [
+    "approved PDF set"
+  ],
+  "nodes": [
+    {
+      "id": "anchor_source_pdfs",
+      "kind": "anchor",
+      "responsibility": "冻结的40篇纳入文献原文全文PDF（含补充材料、勘误），带SHA-256清单；所有效应量与样本量的唯一事实来源",
+      "owner": "Bruce",
+      "cadence": "frozen at study lock",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "approved PDF set"
+        ],
+        "outputs": [
+          "source_pdfs_40",
+          "pdf_hash_manifest"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_protocol",
+      "kind": "anchor",
+      "responsibility": "预注册方案（PROSPERO/OSF）+冻结的提取编码手册（效应量类型、优先取值规则、单位换算、多臂/重复队列处理）+预设分析计划（模型、异质性、敏感性分析）",
+      "owner": "Bruce",
+      "cadence": "frozen; changes only via approved amendment",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "approved protocol amendment"
+        ],
+        "outputs": [
+          "frozen_protocol",
+          "extraction_codebook",
+          "analysis_plan"
+        ]
+      },
+      "side_effect": "none"
+    },
+    {
+      "id": "extract_a",
+      "kind": "execution_loop",
+      "responsibility": "Agent A 按编码手册从原文PDF提取每篇的效应量、SE/CI、各组样本量、事件数、出处页码/表号与原文截取引文，填入提取表A",
+      "owner": "Agent A",
+      "cadence": "per study batch",
+      "cadence_tier": "fast",
+      "max_iterations": 2,
+      "context_scope": "task-scoped",
+      "evidence_sources": [
+        "source_pdfs_40"
+      ],
+      "optimizes": "extraction_completeness",
+      "writes": [
+        "extraction_table_A"
+      ],
+      "side_effect": "internal-reversible",
+      "contract": {
+        "inputs": [
+          "source_pdfs_40",
+          "extraction_codebook",
+          "systematic_error_notes"
+        ],
+        "outputs": [
+          "extraction_table_A",
+          "provenance_quotes"
+        ]
+      }
+    },
+    {
+      "id": "blind_double_extraction",
+      "kind": "verification_loop",
+      "responsibility": "独立第二提取者（不同模型家族，fresh context，看不到表A）直接从原文PDF独立提取同一组字段形成表C；锁定表C后才与表A逐字段比对，输出不一致清单与一致率（kappa/ICC）。这才是对提取的复核，Agent B 读表A重算不算",
+      "owner": "Agent C (independent extractor, different model family)",
+      "cadence": "per study batch",
+      "cadence_tier": "medium",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "source_pdfs_40"
+      ],
+      "writes": [
+        "extraction_table_C",
+        "discrepancy_log"
+      ],
+      "side_effect": "internal-reversible",
+      "contract": {
+        "inputs": [
+          "source_pdfs_40",
+          "extraction_codebook",
+          "extraction_table_A"
+        ],
+        "outputs": [
+          "extraction_table_C",
+          "discrepancy_log",
+          "agreement_report"
+        ]
+      }
+    },
+    {
+      "id": "reconcile",
+      "kind": "arbitration",
+      "responsibility": "对每条A/C不一致回到原文PDF页码裁决（不取平均、不按多数票），记录裁决理由；发现系统性错误（如SD/SE混淆、单位错）时退回A重提该类字段；输出锁定的核对后提取表",
+      "owner": "Bruce",
+      "cadence": "per discrepancy batch",
+      "cadence_tier": "human",
+      "priority_policy": "原文PDF证据 > 预注册方案/编码手册 > 双提取一致 > 分析结果是否显著或好看 > 进度；结果方向或显著性永远不作为裁决依据",
+      "writes": [
+        "reconciled_table_locked"
+      ],
+      "side_effect": "internal-reversible",
+      "contract": {
+        "inputs": [
+          "discrepancy_log",
+          "source_pdfs_40",
+          "audit_findings"
+        ],
+        "outputs": [
+          "reconciled_table_locked",
+          "adjudication_log",
+          "systematic_error_notes"
+        ]
+      }
+    },
+    {
+      "id": "pooled_analysis",
+      "kind": "execution",
+      "responsibility": "Agent B 用确定性脚本（固定版本R metafor，代码入库）按预设分析计划从锁定的核对表跑合并分析、异质性、敏感性与发表偏倚分析",
+      "owner": "Agent B (deterministic analysis script)",
+      "cadence": "per locked table version",
+      "cadence_tier": "medium",
+      "evidence_sources": [
+        "reconciled_table_locked"
+      ],
+      "writes": [
+        "pooled_results"
+      ],
+      "side_effect": "internal-reversible",
+      "contract": {
+        "inputs": [
+          "reconciled_table_locked",
+          "analysis_plan"
+        ],
+        "outputs": [
+          "pooled_results",
+          "analysis_code",
+          "forest_plots"
+        ]
+      }
+    },
+    {
+      "id": "recompute_plausibility",
+      "kind": "counter_metric_loop",
+      "responsibility": "反指标：用另一套软件（如Stata/Python）独立重算合并估计，并做合理性检查——SE与CI自洽、效应方向与原文结论一致、样本量与参与者流程图一致、同一队列重复纳入、极端值与留一法影响、单位换算。拆穿'两边一致'式的便宜胜利（同一张坏表两次计算必然一致）",
+      "owner": "Agent D (independent recomputation)",
+      "cadence": "per locked table version",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "reconciled_table_locked",
+        "source_pdfs_40"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "pooled_results",
+          "reconciled_table_locked",
+          "source_pdfs_40",
+          "analysis_plan"
+        ],
+        "outputs": [
+          "recompute_diff",
+          "plausibility_flags"
+        ]
+      }
+    },
+    {
+      "id": "source_audit",
+      "kind": "audit_loop",
+      "responsibility": "人工溯源审计：随机抽≥20%研究 + 全部权重前5的研究 + 所有被标记研究，由人对照原文PDF逐字段核对锁定表；同时审计提取表A的'完整率'是否靠猜测/估算填空换来",
+      "owner": "Human co-reviewer designated by Bruce",
+      "cadence": "once per table lock before manuscript",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "source_pdfs_40"
+      ],
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "source_pdfs_40",
+          "extraction_table_A",
+          "reconciled_table_locked",
+          "plausibility_flags"
+        ],
+        "outputs": [
+          "audit_findings",
+          "audit_signoff"
+        ]
+      }
+    },
+    {
+      "id": "protocol_governance",
+      "kind": "governance_loop",
+      "responsibility": "慢回路：审视纳入标准、效应量选择、分析计划是否仍合适；任何偏离只能以修正提案形式提交Bruce批准并在论文中报告为方案偏离",
+      "owner": "Bruce",
+      "cadence": "only on proposed amendment",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "frozen_protocol",
+          "adjudication_log",
+          "audit_findings"
+        ],
+        "outputs": [
+          "amendment_proposal",
+          "protocol_version"
+        ]
+      }
+    },
+    {
+      "id": "bruce_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 签字门：确认双提取一致性达标、所有不一致已裁决、重算与合理性检查通过、溯源审计签字后，才允许把结果写入论文；同时是修改锚点/方案的唯一入口",
+      "owner": "Bruce",
+      "cadence": "before manuscript write and on amendment",
+      "cadence_tier": "human",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "pooled_results",
+          "agreement_report",
+          "recompute_diff",
+          "audit_signoff",
+          "amendment_proposal"
+        ],
+        "outputs": [
+          "approval_record",
+          "approved protocol amendment"
+        ]
+      }
+    },
+    {
+      "id": "write_manuscript",
+      "kind": "execution",
+      "responsibility": "把批准版本的合并结果、森林图、PRISMA与双提取/审计方法学描述写入论文，结果数字与锁定表哈希和分析代码版本绑定",
+      "owner": "Agent B (writing)",
+      "cadence": "once per approved version",
+      "cadence_tier": "slow",
+      "side_effect": "high-risk",
+      "writes": [
+        "manuscript_results_section"
+      ],
+      "contract": {
+        "inputs": [
+          "approval_record",
+          "pooled_results"
+        ],
+        "outputs": [
+          "manuscript_results_section",
+          "reproducibility_package"
+        ]
+      }
+    },
+    {
+      "id": "stop",
+      "kind": "stop_handoff",
+      "responsibility": "终态交接：写入完成、阻断或升级，交Bruce",
+      "owner": "Bruce",
+      "cadence": "on terminal state",
+      "cadence_tier": "human",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "manuscript_results_section",
+          "approval_record",
+          "escalation_report"
+        ],
+        "outputs": [
+          "handoff_note"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "anchor_source_pdfs",
+      "to": "extract_a",
+      "relation": "anchors",
+      "artifact": "source_pdfs_40"
+    },
+    {
+      "from": "anchor_source_pdfs",
+      "to": "blind_double_extraction",
+      "relation": "anchors",
+      "artifact": "source_pdfs_40 (read directly, not via table A)"
+    },
+    {
+      "from": "anchor_source_pdfs",
+      "to": "reconcile",
+      "relation": "anchors",
+      "artifact": "source_pdfs_40 page-level evidence"
+    },
+    {
+      "from": "anchor_source_pdfs",
+      "to": "recompute_plausibility",
+      "relation": "anchors",
+      "artifact": "source_pdfs_40 for plausibility checks"
+    },
+    {
+      "from": "anchor_source_pdfs",
+      "to": "source_audit",
+      "relation": "anchors",
+      "artifact": "source_pdfs_40"
+    },
+    {
+      "from": "anchor_protocol",
+      "to": "extract_a",
+      "relation": "anchors",
+      "artifact": "extraction_codebook"
+    },
+    {
+      "from": "anchor_protocol",
+      "to": "blind_double_extraction",
+      "relation": "anchors",
+      "artifact": "extraction_codebook"
+    },
+    {
+      "from": "anchor_protocol",
+      "to": "pooled_analysis",
+      "relation": "anchors",
+      "artifact": "analysis_plan"
+    },
+    {
+      "from": "anchor_protocol",
+      "to": "recompute_plausibility",
+      "relation": "anchors",
+      "artifact": "analysis_plan"
+    },
+    {
+      "from": "anchor_protocol",
+      "to": "protocol_governance",
+      "relation": "anchors",
+      "artifact": "frozen_protocol"
+    },
+    {
+      "from": "extract_a",
+      "to": "blind_double_extraction",
+      "relation": "feeds",
+      "artifact": "extraction_table_A (sealed until table C is locked)"
+    },
+    {
+      "from": "extract_a",
+      "to": "source_audit",
+      "relation": "feeds",
+      "artifact": "extraction_table_A with provenance_quotes"
+    },
+    {
+      "from": "blind_double_extraction",
+      "to": "reconcile",
+      "relation": "escalates",
+      "artifact": "discrepancy_log"
+    },
+    {
+      "from": "blind_double_extraction",
+      "to": "pooled_analysis",
+      "relation": "vetoes",
+      "artifact": "agreement_report: no analysis while unresolved discrepancies or agreement below threshold"
+    },
+    {
+      "from": "blind_double_extraction",
+      "to": "bruce_gate",
+      "relation": "feeds",
+      "artifact": "agreement_report"
+    },
+    {
+      "from": "reconcile",
+      "to": "extract_a",
+      "relation": "revises",
+      "artifact": "systematic_error_notes (re-extract affected field class)"
+    },
+    {
+      "from": "reconcile",
+      "to": "pooled_analysis",
+      "relation": "feeds",
+      "artifact": "reconciled_table_locked"
+    },
+    {
+      "from": "reconcile",
+      "to": "recompute_plausibility",
+      "relation": "feeds",
+      "artifact": "reconciled_table_locked"
+    },
+    {
+      "from": "reconcile",
+      "to": "source_audit",
+      "relation": "feeds",
+      "artifact": "reconciled_table_locked"
+    },
+    {
+      "from": "reconcile",
+      "to": "protocol_governance",
+      "relation": "feeds",
+      "artifact": "adjudication_log"
+    },
+    {
+      "from": "reconcile",
+      "to": "stop",
+      "relation": "escalates",
+      "artifact": "escalation_report: discrepancies not resolvable from source"
+    },
+    {
+      "from": "pooled_analysis",
+      "to": "recompute_plausibility",
+      "relation": "feeds",
+      "artifact": "pooled_results + analysis_code"
+    },
+    {
+      "from": "pooled_analysis",
+      "to": "bruce_gate",
+      "relation": "feeds",
+      "artifact": "pooled_results"
+    },
+    {
+      "from": "recompute_plausibility",
+      "to": "source_audit",
+      "relation": "feeds",
+      "artifact": "plausibility_flags"
+    },
+    {
+      "from": "recompute_plausibility",
+      "to": "write_manuscript",
+      "relation": "vetoes",
+      "artifact": "recompute_diff: block if estimates differ beyond rounding or plausibility flags open"
+    },
+    {
+      "from": "recompute_plausibility",
+      "to": "bruce_gate",
+      "relation": "escalates",
+      "artifact": "recompute_diff"
+    },
+    {
+      "from": "source_audit",
+      "to": "reconcile",
+      "relation": "escalates",
+      "artifact": "audit_findings (errors found in locked table)"
+    },
+    {
+      "from": "source_audit",
+      "to": "write_manuscript",
+      "relation": "vetoes",
+      "artifact": "audit_findings: block on any uncorrected source mismatch"
+    },
+    {
+      "from": "source_audit",
+      "to": "bruce_gate",
+      "relation": "escalates",
+      "artifact": "audit_signoff"
+    },
+    {
+      "from": "source_audit",
+      "to": "protocol_governance",
+      "relation": "feeds",
+      "artifact": "audit_findings"
+    },
+    {
+      "from": "protocol_governance",
+      "to": "bruce_gate",
+      "relation": "escalates",
+      "artifact": "amendment_proposal"
+    },
+    {
+      "from": "protocol_governance",
+      "to": "extract_a",
+      "relation": "constrains",
+      "artifact": "protocol_version"
+    },
+    {
+      "from": "protocol_governance",
+      "to": "pooled_analysis",
+      "relation": "constrains",
+      "artifact": "protocol_version"
+    },
+    {
+      "from": "bruce_gate",
+      "to": "anchor_protocol",
+      "relation": "revises",
+      "artifact": "approved protocol amendment (logged as deviation)"
+    },
+    {
+      "from": "bruce_gate",
+      "to": "write_manuscript",
+      "relation": "constrains",
+      "artifact": "approval_record"
+    },
+    {
+      "from": "bruce_gate",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "approval_record or rejection"
+    },
+    {
+      "from": "write_manuscript",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "manuscript_results_section + reproducibility_package"
+    },
+    {
+      "from": "source_audit",
+      "to": "bruce_gate",
+      "relation": "vetoes",
+      "artifact": "audit_signoff missing or audit_findings open → gate cannot approve"
+    },
+    {
+      "from": "recompute_plausibility",
+      "to": "bruce_gate",
+      "relation": "vetoes",
+      "artifact": "recompute_diff beyond rounding → gate cannot approve"
+    },
+    {
+      "from": "anchor_source_pdfs",
+      "to": "bruce_gate",
+      "relation": "anchors",
+      "artifact": "pdf_hash_manifest for sign-off traceability"
+    },
+    {
+      "from": "pooled_analysis",
+      "to": "write_manuscript",
+      "relation": "feeds",
+      "artifact": "pooled_results (approved version only)"
+    }
+  ]
+}

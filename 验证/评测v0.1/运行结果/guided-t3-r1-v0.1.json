@@ -1,0 +1,473 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊 AI 休克预警阈值持续优化控制图",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "在报警负担不超过护理可承受上限的前提下，降低急诊休克漏诊（提高经独立判读确认的真实敏感度），且每次阈值上线均经科室医疗质量委员会批准",
+    "human_owner": "Bruce",
+    "observable_success": "相对现行阈值：在时间外推留出集与上线后前瞻性病例判读中，休克敏感度提高且 95%CI 下限不低于基线；每护士班次报警数、PPV、护士报警忽略/静音率不劣于委员会设定上限；漏诊病例复盘数下降；上线有委员会签字记录且可回滚",
+    "out_of_scope": [
+      "Agent 自动上线或修改生产阈值",
+      "Agent 修改休克结局定义、判读标准、留出集或报警负担上限",
+      "修改预警模型本身的结构或重新训练（另立项目）",
+      "对个别患者给出临床处置决定"
+    ],
+    "metrics": [
+      "独立判读的休克敏感度",
+      "每护士班次报警数",
+      "报警 PPV",
+      "护士忽略/静音率",
+      "漏诊病例数"
+    ]
+  },
+  "classification_rationale": "单回路不够：Agent 优化的敏感度与护士报警负担直接冲突（降阈值即可刷敏感度、同时制造报警疲劳，疲劳反过来导致报警被忽略、实际漏诊上升）；需要独立于调参者的结局判读锚点、反指标回路、月度来源/漂移审计、仲裁优先级，以及委员会人工门后才能产生高风险上线副作用。故为图 + 调参执行回路。",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取脱敏的历史预警分数与开发集结局",
+      "在开发集上搜索候选阈值并生成候选报告",
+      "提交候选阈值给验证与反指标节点",
+      "提议修改目标、上限或锚点（仅提议）"
+    ],
+    "forbidden_actions": [
+      "写入生产报警配置",
+      "读取或使用时间外推留出集与判读结局做调参",
+      "修改休克结局定义、判读表单、报警负担上限",
+      "绕过医疗质量委员会上线",
+      "修改验证/审计脚本或其通过标准"
+    ]
+  },
+  "frozen_rules": [
+    "休克结局定义与临床医师盲法判读标准冻结，变更须委员会批准",
+    "时间外推留出集冻结，调参回路不可访问",
+    "报警负担硬上限（每护士班次报警数、最低 PPV、忽略率上限）由委员会设定，Agent 不可改",
+    "敏感度不得低于现行阈值基线（安全底线）",
+    "任何生产阈值变更必须经医疗质量委员会签字，并保留一键回滚到上一版阈值",
+    "验证与审计脚本、通过标准由调参者以外的人维护"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 20
+  },
+  "failure_policy": {
+    "failed": "候选被验证或反指标否决：记录原因，退回调参回路，本周期最多重试 2 次；仍失败则本周期维持现行阈值并交接",
+    "blocked": "锚点过期、判读结局不足或数据管道漂移：停止产出候选，升级给 Bruce 与审计负责人",
+    "budget_exhausted": "停止本周期，维持现行阈值，提交已有证据与未决问题给 Bruce"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: 委员会批准的阈值上线且上线后 4 周监测达标",
+      "failed: 连续两个周期无候选同时满足敏感度与报警负担约束",
+      "blocked: 锚点过期/数据漂移未解决，或上线后监测触发回滚",
+      "budget_exhausted: 本周期重试或成本预算用尽"
+    ],
+    "artifact": "handoff.md（候选、验证与反指标报告、委员会决议、监测结果、回滚记录）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "急诊科医疗质量委员会主任（Bruce 提交）",
+      "priority_policy": "1) 敏感度不低于基线（安全底线）与报警负担硬上限均为否决条件，任一违反即否；2) 两者都满足时，优先选减少漏诊更多者；3) 敏感度增益与负担增加需权衡时，按委员会预设的‘每多发现1例休克可接受的额外报警数’交换比裁决；4) 证据不足维持现行阈值"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "报警负担上限变更",
+      "生产阈值上线"
+    ]
+  },
+  "verification": {
+    "independence_statement": "验证者由临床信息科维护，评估脚本独立于调参 Agent；数据来源为时间外推留出集与临床医师盲法判读的休克结局（来自病历/乳酸/血管活性药/转归），而非调参者使用的开发集或报警日志；反指标数据来自护理报警日志与护士反馈，调参者无法写入。",
+    "checks": [
+      "verifier",
+      "counter_alarm_burden"
+    ]
+  },
+  "external_inputs": [
+    "历史预警分数开发集",
+    "现行生产阈值",
+    "委员会会议日程",
+    "电子病历原始记录（乳酸、血管活性药、转归）",
+    "护理系统原始报警事件流"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_adjudicated_outcomes",
+      "source": "两名急诊医师盲法判读的休克结局 + 时间外推留出集（晚于开发集的就诊）",
+      "evidence_form": "判读表与冻结留出集哈希、Kappa",
+      "owner": "急诊科质控医师组",
+      "freshness_rule": "每季度追加最新判读病例；超过 120 天未更新则视为过期，阻断验证",
+      "max_age_days": 120,
+      "last_confirmed": "2026-11-01",
+      "frozen": true
+    },
+    {
+      "node_id": "anchor_alarm_logs",
+      "source": "护理系统原始报警日志、静音/忽略记录与护士报警负担反馈",
+      "evidence_form": "原始日志导出（只读）与反馈汇总",
+      "owner": "急诊护士长",
+      "freshness_rule": "每周导出；超过 30 天未更新视为过期",
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-10",
+      "frozen": true
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_adjudicated_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供冻结的独立休克结局与留出集",
+      "owner": "急诊科质控医师组",
+      "cadence": "每季度",
+      "cadence_tier": "slow",
+      "contract": {
+        "inputs": [
+          "电子病历原始记录（乳酸、血管活性药、转归）"
+        ],
+        "outputs": [
+          "adjudicated_outcomes"
+        ]
+      },
+      "evidence_sources": [
+        "chart_adjudication"
+      ]
+    },
+    {
+      "id": "anchor_alarm_logs",
+      "kind": "anchor",
+      "responsibility": "提供原始报警负担与护士反馈",
+      "owner": "急诊护士长",
+      "cadence": "每周",
+      "cadence_tier": "medium",
+      "contract": {
+        "inputs": [
+          "护理系统原始报警事件流"
+        ],
+        "outputs": [
+          "alarm_burden_logs"
+        ]
+      },
+      "evidence_sources": [
+        "nursing_alarm_system"
+      ]
+    },
+    {
+      "id": "tuner",
+      "kind": "execution_loop",
+      "responsibility": "在开发集上搜索候选阈值，在冻结约束内提高敏感度",
+      "owner": "阈值调参 Agent",
+      "cadence": "每月一个周期",
+      "cadence_tier": "fast",
+      "max_iterations": 3,
+      "optimizes": "独立判读的休克敏感度",
+      "side_effect": "none",
+      "writes": [
+        "threshold_candidate"
+      ],
+      "evidence_sources": [
+        "dev_score_set"
+      ],
+      "contract": {
+        "inputs": [
+          "历史预警分数开发集",
+          "现行生产阈值",
+          "veto_reasons",
+          "burden_constraints",
+          "governance_targets",
+          "arbitration_ruling"
+        ],
+        "outputs": [
+          "threshold_candidate"
+        ]
+      }
+    },
+    {
+      "id": "verifier",
+      "kind": "verification_loop",
+      "responsibility": "在留出集与判读结局上重放候选，计算敏感度/特异度/PPV 及 CI，与基线比较并否决",
+      "owner": "临床信息科",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "chart_adjudication"
+      ],
+      "contract": {
+        "inputs": [
+          "threshold_candidate",
+          "adjudicated_outcomes"
+        ],
+        "outputs": [
+          "verification_report",
+          "veto_reasons"
+        ]
+      }
+    },
+    {
+      "id": "counter_alarm_burden",
+      "kind": "counter_metric_loop",
+      "responsibility": "估算候选在近期真实报警流上的每班报警数、PPV、预期忽略率，超上限即否决",
+      "owner": "急诊护士长 + 临床信息科",
+      "cadence": "每个候选 / 每周",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "nursing_alarm_system"
+      ],
+      "contract": {
+        "inputs": [
+          "threshold_candidate",
+          "alarm_burden_logs"
+        ],
+        "outputs": [
+          "burden_report",
+          "burden_constraints"
+        ]
+      }
+    },
+    {
+      "id": "arbitration",
+      "kind": "arbitration",
+      "responsibility": "按优先级合并验证与反指标结论，形成提交委员会的建议",
+      "owner": "Bruce",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "priority_policy": "安全底线与报警负担上限均为否决条件；均满足时按预设交换比取舍；证据不足维持现行阈值",
+      "contract": {
+        "inputs": [
+          "verification_report",
+          "burden_report"
+        ],
+        "outputs": [
+          "arbitration_recommendation"
+        ]
+      }
+    },
+    {
+      "id": "committee_gate",
+      "kind": "human_gate",
+      "responsibility": "科室医疗质量委员会审议并签字批准/拒绝上线",
+      "owner": "急诊科医疗质量委员会",
+      "cadence": "每月例会",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "arbitration_recommendation",
+          "委员会会议日程",
+          "adjudicated_outcomes"
+        ],
+        "outputs": [
+          "committee_decision"
+        ]
+      }
+    },
+    {
+      "id": "deploy",
+      "kind": "execution",
+      "responsibility": "按委员会决议写入生产阈值，保留回滚版本",
+      "owner": "临床信息科工程师",
+      "cadence": "批准后一次",
+      "cadence_tier": "human",
+      "side_effect": "high-risk",
+      "writes": [
+        "production_threshold"
+      ],
+      "contract": {
+        "inputs": [
+          "committee_decision"
+        ],
+        "outputs": [
+          "deployment_record"
+        ]
+      }
+    },
+    {
+      "id": "audit",
+      "kind": "audit_loop",
+      "responsibility": "上线后前瞻监测：漏诊病例复盘、亚组敏感度、数据/口径漂移、实际报警负担；触发回滚或升级",
+      "owner": "急诊质控办",
+      "cadence": "每月",
+      "cadence_tier": "slow",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "chart_adjudication",
+        "nursing_alarm_system",
+        "missed_case_review"
+      ],
+      "contract": {
+        "inputs": [
+          "deployment_record",
+          "adjudicated_outcomes",
+          "alarm_burden_logs"
+        ],
+        "outputs": [
+          "audit_report"
+        ]
+      }
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "季度复核敏感度底线、报警负担上限、交换比与结局定义，处理 Agent 的修改提议",
+      "owner": "急诊科医疗质量委员会",
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "contract": {
+        "inputs": [
+          "audit_report"
+        ],
+        "outputs": [
+          "governance_targets"
+        ]
+      }
+    },
+    {
+      "id": "stop",
+      "kind": "stop_handoff",
+      "responsibility": "终态交接、维持现行阈值或回滚",
+      "owner": "Bruce",
+      "cadence": "周期结束",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "committee_decision",
+          "audit_report"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "tuner",
+      "to": "verifier",
+      "relation": "feeds",
+      "artifact": "threshold_candidate"
+    },
+    {
+      "from": "tuner",
+      "to": "counter_alarm_burden",
+      "relation": "feeds",
+      "artifact": "threshold_candidate"
+    },
+    {
+      "from": "anchor_adjudicated_outcomes",
+      "to": "verifier",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes"
+    },
+    {
+      "from": "anchor_alarm_logs",
+      "to": "counter_alarm_burden",
+      "relation": "anchors",
+      "artifact": "alarm_burden_logs"
+    },
+    {
+      "from": "verifier",
+      "to": "tuner",
+      "relation": "vetoes",
+      "artifact": "veto_reasons"
+    },
+    {
+      "from": "counter_alarm_burden",
+      "to": "tuner",
+      "relation": "constrains",
+      "artifact": "burden_constraints"
+    },
+    {
+      "from": "verifier",
+      "to": "arbitration",
+      "relation": "verifies",
+      "artifact": "verification_report"
+    },
+    {
+      "from": "counter_alarm_burden",
+      "to": "arbitration",
+      "relation": "vetoes",
+      "artifact": "burden_report"
+    },
+    {
+      "from": "arbitration",
+      "to": "committee_gate",
+      "relation": "arbitrates",
+      "artifact": "arbitration_recommendation"
+    },
+    {
+      "from": "committee_gate",
+      "to": "deploy",
+      "relation": "constrains",
+      "artifact": "committee_decision"
+    },
+    {
+      "from": "committee_gate",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "committee_decision"
+    },
+    {
+      "from": "deploy",
+      "to": "audit",
+      "relation": "feeds",
+      "artifact": "deployment_record"
+    },
+    {
+      "from": "anchor_adjudicated_outcomes",
+      "to": "audit",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes"
+    },
+    {
+      "from": "anchor_alarm_logs",
+      "to": "audit",
+      "relation": "anchors",
+      "artifact": "alarm_burden_logs"
+    },
+    {
+      "from": "audit",
+      "to": "governance",
+      "relation": "escalates",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "audit",
+      "to": "stop",
+      "relation": "hands_off",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "governance",
+      "to": "tuner",
+      "relation": "constrains",
+      "artifact": "governance_targets"
+    },
+    {
+      "from": "arbitration",
+      "to": "tuner",
+      "relation": "arbitrates",
+      "artifact": "arbitration_ruling（验证否决、负担约束、治理目标冲突时的优先级裁决）"
+    },
+    {
+      "from": "anchor_adjudicated_outcomes",
+      "to": "committee_gate",
+      "relation": "anchors",
+      "artifact": "adjudicated_outcomes（委员会直接查看留出集上的根结果：敏感度与漏诊病例，而非只看节点报告）"
+    }
+  ]
+}

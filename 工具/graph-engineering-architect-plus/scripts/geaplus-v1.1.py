@@ -332,6 +332,9 @@ def validate(raw: dict[str, Any]) -> Findings:
     rg = spec.get("root_goal")
     if not (isinstance(rg, dict) and all(s(rg.get(k)) for k in ("statement", "human_owner", "observable_success"))):
         f.err("E-ROOT", "root_goal needs statement, human_owner, observable_success", "the human owner writes these")
+    if isinstance(rg, dict) and "metrics" in rg and not (isinstance(rg["metrics"], list) and all(s(m) for m in rg["metrics"])):
+        f.err("E-METRICS", "root_goal.metrics must be a list of metric names (strings)",
+              "write metric names only, e.g. [\"sensitivity\", \"alarms_per_shift\"]; put targets and definitions elsewhere")
 
     # --- nodes
     raw_nodes = as_list(spec.get("nodes"))
@@ -652,7 +655,7 @@ def diagnose(raw: dict[str, Any], today: dt.date, run: dict[str, Any] | None) ->
         if i["code"] in code_to_pattern:
             hits.append({"pattern": code_to_pattern[i["code"]], "evidence": i["message"], "repair": i["repair"]})
     # wrong target: optimised metric must be named in root goal's tracked metrics
-    root_metrics = set(as_list((spec.get("root_goal") or {}).get("metrics")))
+    root_metrics = {m for m in as_list(((spec.get("root_goal") if isinstance(spec.get("root_goal"), dict) else {}) or {}).get("metrics")) if s(m)}
     for nid, n in g.nodes.items():
         m = n.get("optimizes")
         if s(m) and root_metrics and m not in root_metrics:

@@ -5,7 +5,7 @@
 |---|---|---|
 | schema_version | ✓ | `1.0`（兼容，loop 缺 max_iterations 仅警告）或 `1.1`（严格） |
 | title, mode, state | ✓ | mode ∈ direct/loop/linear_workflow/graph/graph_plus_loop/blocked |
-| root_goal | ✓ | statement, human_owner, observable_success；**新增可选 metrics[]** 用于目标错位检查 |
+| root_goal | ✓ | statement, human_owner, observable_success；**新增可选 metrics[]**（字符串列表，只写指标名）用于目标错位检查；写成对象会报 E-METRICS |
 | permissions | ✓ | human_owner, allowed_actions[], forbidden_actions[]（不得重叠） |
 | frozen_rules | ✓ | 非空字符串数组 |
 | approval | ✓ | status ∈ pending/approved/rejected；approved 需 approved_by |

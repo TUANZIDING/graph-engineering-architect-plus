@@ -1,0 +1,266 @@
+{
+  "schema_version": "1.1",
+  "title": "ICU 72h 再入院预测模型每周持续改进控制架构（修正评估泄漏与自动上线风险）",
+  "mode": "graph_plus_loop",
+  "rationale": "需求本身是周期性循环（每周重训），但原方案有两处结构性缺陷，必须用图来控制而不能用简单 loop：(1) 用训练所用的同一个月数据算 AUC 是数据泄漏/自评，AUC 上涨只说明过拟合，不能作为替换依据；必须改为时间上后置、训练从未见过的冻结 holdout，并由独立上下文的验证者对候选与线上模型在同一 holdout 上配对比较（含置信区间）。(2) 只看 AUC 会 Goodhart：需要校准、阈值处敏感度/告警率、亚组表现等反指标配对；72h 标签存在成熟延迟，最近 3 天出院者标签不完整需截断。(3) 临床预测模型替换线上属于高风险副作用，不允许 AUC 涨了就自动替换，必须经 Bruce 人工审批，并采用影子/金丝雀发布与可回滚。故为多角色图 + 内部训练/验证循环。",
+  "state": "design",
+  "root_goal": {
+    "statement": "每周用最近一个月 ICU 数据重训 72 小时再入院预测模型，仅在独立、时间后置的 holdout 上被证明优于线上模型且无安全反指标退化、并经人工批准时，才替换线上模型。",
+    "human_owner": "Bruce",
+    "observable_success": "每周产出一份晋升评审包：候选与线上模型在同一冻结时间外 holdout 上的配对 AUC 差及 95% bootstrap CI、校准（Brier/校准斜率）、预设阈值下敏感度与告警率、亚组 AUC；只有 CI 下界 > 0 且反指标未超容差且 Bruce 批准的候选才进入影子→金丝雀→全量；上线后监控指标在容差内，否则 1 小时内回滚至上一版本。",
+    "metrics": ["holdout_auroc_delta", "calibration_brier", "calibration_slope", "sensitivity_at_threshold", "alert_rate", "subgroup_auroc_min", "post_deploy_live_auroc"]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取去标识化 ICU 数据快照",
+      "在隔离环境中训练候选模型",
+      "在冻结 holdout 上评估候选与线上模型",
+      "写入模型注册表的 candidate 槽位",
+      "生成晋升评审包",
+      "在 Bruce 批准后执行影子与金丝雀部署",
+      "触发向上一版本的自动回滚"
+    ],
+    "forbidden_actions": [
+      "用训练数据或与训练重叠的数据计算用于晋升决策的 AUC",
+      "未经 Bruce 批准替换线上生产模型",
+      "训练或调参时访问冻结 holdout",
+      "修改 72h 再入院标签定义、holdout 划分规则或晋升阈值",
+      "读取或导出可识别患者身份的数据",
+      "删除历史模型版本或评估记录"
+    ]
+  },
+  "frozen_rules": [
+    "评估集必须在时间上晚于训练窗口且与训练集患者/住院无重叠；用同月训练数据算出的 AUC 不得作为晋升依据。",
+    "72h 再入院标签需成熟：出院后不满 72h（外加数据入库延迟缓冲）的样本不得进入训练或评估。",
+    "候选与线上模型必须在同一份冻结 holdout 上配对比较，晋升要求 AUC 差的 95% bootstrap CI 下界 > 0。",
+    "反指标（校准、阈值处敏感度、告警率、最差亚组 AUC）任一退化超出预设容差即否决晋升。",
+    "任何生产模型替换必须经 Bruce 人工批准，且先影子运行再金丝雀，保留一键回滚。",
+    "标签定义、特征白名单、阈值与容差变更只能由 Bruce 修改，Agent 不得自行调整。",
+    "验证与审计节点使用 fresh-independent 上下文，不复用训练节点的推理或产物摘要。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 10,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": "任一节点失败或证据缺失时保持线上模型不变（fail-safe 为不替换）；数据质量/泄漏审计失败则本周停止训练；验证者无法复现结果或反指标否决则候选标记 rejected 并归档；连续 3 周无合格候选或线上监控越界时升级给 Bruce；上线后监控越界自动回滚至上一已批准版本并通知 Bruce。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "数据泄漏或患者重叠审计失败",
+      "标签成熟度或数据完整性不达标",
+      "预算或重试次数耗尽",
+      "上线后实时 AUC、校准或告警率越界并已触发回滚",
+      "检测到显著分布漂移（如收治政策/编码变化）导致 holdout 不再代表线上人群",
+      "连续 3 周无可晋升候选"
+    ],
+    "artifact": "周度晋升评审包 / 停止报告：数据快照哈希、训练与 holdout 时间窗、配对指标与 CI、反指标表、审计结论、建议动作与回滚状态"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "anchor_label_and_data",
+      "source": "医院 ICU 数据仓库去标识化快照 + 书面 72h 再入院标签定义（出院后 72h 内非计划返回 ICU）",
+      "evidence_form": "带哈希的数据快照清单 + 标签定义文档版本号",
+      "owner": "Bruce",
+      "freshness_rule": "每周训练前重新抽取快照；标签定义变更需 Bruce 确认",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_holdout",
+      "source": "时间后置冻结 holdout：训练窗口之后、标签已成熟的一周出院患者，与训练集无患者重叠",
+      "evidence_form": "holdout 患者 ID 哈希列表 + 时间窗 + 冻结时间戳",
+      "owner": "Bruce",
+      "freshness_rule": "每周滚动生成，生成后对训练节点不可见；划分规则冻结",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_production_monitor",
+      "source": "线上模型实际预测与成熟后真实再入院结局的对账日志",
+      "evidence_form": "按日聚合的实时 AUC、校准、告警率报表",
+      "owner": "Bruce",
+      "freshness_rule": "每日更新，结局成熟后回填",
+      "frozen": true,
+      "max_age_days": 3,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "external_inputs": ["ICU 数据仓库每周快照", "线上模型当前版本", "预设晋升阈值与容差表"],
+  "nodes": [
+    {
+      "id": "anchor_label_and_data",
+      "kind": "anchor",
+      "responsibility": "提供本周去标识化数据快照与冻结的标签定义",
+      "owner": "Bruce",
+      "contract": {"inputs": ["ICU 数据仓库每周快照"], "outputs": ["data_snapshot", "label_definition"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_holdout",
+      "kind": "anchor",
+      "responsibility": "提供训练窗口之后、标签成熟、无患者重叠的冻结评估集",
+      "owner": "Bruce",
+      "contract": {"inputs": ["data_snapshot", "label_definition"], "outputs": ["frozen_holdout"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_production_monitor",
+      "kind": "anchor",
+      "responsibility": "提供线上模型真实表现对账数据",
+      "owner": "Bruce",
+      "contract": {"inputs": ["线上模型当前版本"], "outputs": ["live_performance_log"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "data_prep",
+      "kind": "execution",
+      "responsibility": "构建最近一个月训练集：标签成熟截断、特征白名单、排除 holdout 患者，输出数据卡",
+      "owner": "agent:data-prep",
+      "contract": {"inputs": ["data_snapshot", "label_definition", "frozen_holdout_patient_hashes"], "outputs": ["training_set", "data_card"]},
+      "evidence_sources": ["data_snapshot"],
+      "side_effect": "internal-reversible",
+      "writes": ["training_set_store"],
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "data_audit",
+      "kind": "audit_loop",
+      "responsibility": "独立审计泄漏（患者重叠、未来信息特征）、标签成熟度、缺失率与分布漂移",
+      "owner": "agent:data-auditor",
+      "contract": {"inputs": ["training_set", "data_card", "frozen_holdout"], "outputs": ["data_audit_report"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["data_snapshot", "frozen_holdout"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "train_loop",
+      "kind": "execution_loop",
+      "responsibility": "在训练集内部时间切分验证集上训练与调参，产出候选模型（不接触 holdout）",
+      "owner": "agent:trainer",
+      "contract": {"inputs": ["training_set", "data_audit_report"], "outputs": ["candidate_model", "training_log"]},
+      "max_iterations": 3,
+      "optimizes": "internal_validation_auroc",
+      "evidence_sources": ["training_set"],
+      "side_effect": "internal-reversible",
+      "writes": ["model_registry_candidate_slot"],
+      "cadence_tier": "fast"
+    },
+    {
+      "id": "holdout_verifier",
+      "kind": "verification_loop",
+      "responsibility": "在冻结 holdout 上独立复现评估候选与线上模型，计算配对 AUC 差与 95% bootstrap CI",
+      "owner": "agent:verifier",
+      "contract": {"inputs": ["candidate_model", "线上模型当前版本", "frozen_holdout"], "outputs": ["paired_auc_report"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["frozen_holdout"],
+      "optimizes": "holdout_auroc_delta",
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "counter_metrics",
+      "kind": "counter_metric_loop",
+      "responsibility": "在同一 holdout 上检查校准、预设阈值处敏感度与告警率、最差亚组 AUC，防止只追 AUC",
+      "owner": "agent:counter-metric",
+      "contract": {"inputs": ["candidate_model", "线上模型当前版本", "frozen_holdout", "预设晋升阈值与容差表"], "outputs": ["counter_metric_report"]},
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["frozen_holdout"],
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "promotion_arbiter",
+      "kind": "arbitration",
+      "responsibility": "按冻结规则汇总：CI 下界>0 且反指标无越界且审计通过才建议晋升，否则否决；任何冲突以安全/反指标优先",
+      "owner": "agent:arbiter",
+      "contract": {"inputs": ["paired_auc_report", "counter_metric_report", "data_audit_report"], "outputs": ["promotion_review_pack"]},
+      "priority_policy": "数据审计否决 > 反指标否决 > AUC 增益；默认不替换",
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "bruce_approval_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 审阅晋升评审包，批准或拒绝影子/金丝雀部署",
+      "owner": "Bruce",
+      "contract": {"inputs": ["promotion_review_pack"], "outputs": ["deployment_decision"]},
+      "side_effect": "none",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "staged_deploy",
+      "kind": "execution",
+      "responsibility": "仅在获批后执行影子运行→金丝雀→全量，保留上一版本用于一键回滚",
+      "owner": "agent:deployer",
+      "contract": {"inputs": ["deployment_decision", "candidate_model"], "outputs": ["deployment_record"]},
+      "side_effect": "high-risk",
+      "writes": ["production_model_slot"],
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "production_governance",
+      "kind": "governance_loop",
+      "responsibility": "上线后持续对账实时 AUC、校准、告警率与漂移；越界即自动回滚并升级给 Bruce",
+      "owner": "agent:monitor",
+      "contract": {"inputs": ["deployment_record", "live_performance_log", "预设晋升阈值与容差表"], "outputs": ["monitoring_report", "rollback_trigger"]},
+      "max_iterations": 52,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["live_performance_log"],
+      "optimizes": "post_deploy_live_auroc",
+      "side_effect": "internal-reversible",
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "stop_handoff_node",
+      "kind": "stop_handoff",
+      "responsibility": "在停止条件触发时保持线上模型不变/回滚，并把停止报告交给 Bruce",
+      "owner": "Bruce",
+      "contract": {"inputs": ["data_audit_report", "promotion_review_pack", "monitoring_report", "rollback_trigger"], "outputs": ["stop_report"]},
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "anchor_label_and_data", "to": "data_prep", "relation": "anchors", "artifact": "data_snapshot + label_definition"},
+    {"from": "anchor_label_and_data", "to": "anchor_holdout", "relation": "feeds", "artifact": "data_snapshot + label_definition"},
+    {"from": "anchor_holdout", "to": "data_prep", "relation": "constrains", "artifact": "frozen_holdout_patient_hashes（仅用于排除）"},
+    {"from": "data_prep", "to": "data_audit", "relation": "feeds", "artifact": "training_set + data_card"},
+    {"from": "anchor_holdout", "to": "data_audit", "relation": "anchors", "artifact": "frozen_holdout"},
+    {"from": "data_audit", "to": "train_loop", "relation": "constrains", "artifact": "data_audit_report"},
+    {"from": "data_prep", "to": "train_loop", "relation": "feeds", "artifact": "training_set"},
+    {"from": "train_loop", "to": "holdout_verifier", "relation": "feeds", "artifact": "candidate_model"},
+    {"from": "anchor_holdout", "to": "holdout_verifier", "relation": "anchors", "artifact": "frozen_holdout"},
+    {"from": "holdout_verifier", "to": "train_loop", "relation": "verifies", "artifact": "paired_auc_report"},
+    {"from": "train_loop", "to": "counter_metrics", "relation": "feeds", "artifact": "candidate_model"},
+    {"from": "anchor_holdout", "to": "counter_metrics", "relation": "anchors", "artifact": "frozen_holdout"},
+    {"from": "holdout_verifier", "to": "promotion_arbiter", "relation": "feeds", "artifact": "paired_auc_report"},
+    {"from": "counter_metrics", "to": "promotion_arbiter", "relation": "vetoes", "artifact": "counter_metric_report"},
+    {"from": "data_audit", "to": "promotion_arbiter", "relation": "vetoes", "artifact": "data_audit_report"},
+    {"from": "promotion_arbiter", "to": "bruce_approval_gate", "relation": "escalates", "artifact": "promotion_review_pack"},
+    {"from": "bruce_approval_gate", "to": "staged_deploy", "relation": "constrains", "artifact": "deployment_decision"},
+    {"from": "train_loop", "to": "staged_deploy", "relation": "feeds", "artifact": "candidate_model"},
+    {"from": "staged_deploy", "to": "production_governance", "relation": "feeds", "artifact": "deployment_record"},
+    {"from": "anchor_production_monitor", "to": "production_governance", "relation": "anchors", "artifact": "live_performance_log"},
+    {"from": "production_governance", "to": "staged_deploy", "relation": "vetoes", "artifact": "rollback_trigger"},
+    {"from": "production_governance", "to": "train_loop", "relation": "observes", "artifact": "monitoring_report（下周训练参考漂移信息）"},
+    {"from": "data_audit", "to": "stop_handoff_node", "relation": "escalates", "artifact": "data_audit_report"},
+    {"from": "promotion_arbiter", "to": "stop_handoff_node", "relation": "escalates", "artifact": "promotion_review_pack（连续无合格候选）"},
+    {"from": "production_governance", "to": "stop_handoff_node", "relation": "hands_off", "artifact": "monitoring_report + rollback_trigger"}
+  ]
+}

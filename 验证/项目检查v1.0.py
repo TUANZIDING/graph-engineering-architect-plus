@@ -26,13 +26,13 @@ def check(ok: bool, msg: str) -> None:
 
 
 print("1. 回归测试")
-for t in ("回归测试v1.0.py", "回归测试v1.1.py"):
+for t in ("回归测试v1.0.py", "回归测试v1.1.py", "回归测试v1.2.py"):
     r = subprocess.run([sys.executable, str(ROOT / "验证" / t)], capture_output=True, text=True)
     ran = re.search(r"Ran (\d+) tests", r.stderr)
     check(r.returncode == 0, f"{t}：{ran.group(1) if ran else '?'} 个测试")
 
 print("2. 示例预期状态")
-s = importlib.util.spec_from_file_location("geaplus", SKILL / "scripts" / "geaplus-v1.1.py")
+s = importlib.util.spec_from_file_location("geaplus", SKILL / "scripts" / "geaplus-v1.2.py")
 gea = importlib.util.module_from_spec(s)
 s.loader.exec_module(gea)
 EXPECT = {
@@ -71,7 +71,9 @@ for doc in ("README.md", "index.html", "文档/英文说明v1.0.md", "示例/示
 
 print("5. 文档副本与 Skill 内参考文件一致")
 for a, b in (("文档/设计手册v1.0.md", "工具/graph-engineering-architect-plus/references/design-principles-v1.0.md"),
-             ("文档/规格说明v1.1.md", "工具/graph-engineering-architect-plus/references/graph-spec-v1.1.md")):
+             ("文档/规格说明v1.1.md", "工具/graph-engineering-architect-plus/references/graph-spec-v1.1.md"),
+             ("文档/规格说明v1.2.md", "工具/graph-engineering-architect-plus/references/graph-spec-v1.2.md"),
+             ("文档/领域效度清单v1.2.md", "工具/graph-engineering-architect-plus/references/domain-checklists-v1.2.md")):
     check((ROOT / a).read_bytes() == (ROOT / b).read_bytes(), f"{a} == {b}")
 
 print("6. 第三方文件未混入")

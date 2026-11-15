@@ -1,0 +1,258 @@
+{
+ "schema_version": "1.1",
+ "title": "编程 Agent 修复失败测试",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "修好科研代码真实的缺陷而不弱化测试",
+  "human_owner": "Bruce",
+  "observable_success": "既有冻结测试全部通过且未被修改，新增测试经独立审查，Bruce 批准合并",
+  "metrics": [
+   "frozen_suite_pass_rate"
+  ]
+ },
+ "external_inputs": [
+  "test-suite",
+  "failing-tests",
+  "mutation-report",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "修改源代码",
+   "在单独目录提交新增测试草案"
+  ],
+  "forbidden_actions": [
+   "删除、跳过或修改既有测试",
+   "自动合并主分支"
+  ]
+ },
+ "frozen_rules": [
+  "既有测试套件冻结（哈希校验），修复 Agent 只读",
+  "合并主分支须 Bruce 批准"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "测试目录哈希变化",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "frozen-tests",
+   "source": "冻结的既有测试套件与参考输出",
+   "evidence_form": "测试目录哈希",
+   "owner": "Bruce",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "frozen-tests",
+   "kind": "anchor",
+   "responsibility": "冻结的既有测试，修复 Agent 不可写",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "test-suite"
+    ],
+    "outputs": [
+     "frozen-suite"
+    ]
+   }
+  },
+  {
+   "id": "fix",
+   "kind": "execution_loop",
+   "responsibility": "修改源代码使失败测试通过",
+   "owner": "编程 Agent",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "failing-tests"
+    ],
+    "outputs": [
+     "patch"
+    ]
+   },
+   "optimizes": "frozen_suite_pass_rate",
+   "max_iterations": 5,
+   "evidence_sources": [
+    "failing-tests"
+   ],
+   "writes": [
+    "src/"
+   ]
+  },
+  {
+   "id": "ci-check",
+   "kind": "verification_loop",
+   "responsibility": "在干净环境跑冻结测试并校验测试目录哈希未变",
+   "owner": "CI",
+   "contract": {
+    "inputs": [
+     "patch",
+     "frozen-suite"
+    ],
+    "outputs": [
+     "ci-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "frozen-suite"
+   ]
+  },
+  {
+   "id": "test-review",
+   "kind": "audit_loop",
+   "responsibility": "独立审查新增测试是否有效、有无弱化断言（含变异测试）",
+   "owner": "审查 Agent",
+   "contract": {
+    "inputs": [
+     "patch"
+    ],
+    "outputs": [
+     "test-review-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "mutation-report"
+   ]
+  },
+  {
+   "id": "merge-gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 批准合并主分支",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "ci-report",
+     "test-review-report"
+    ],
+    "outputs": [
+     "merge-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "fix",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "frozen-tests",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "frozen-tests",
+   "to": "ci-check",
+   "relation": "anchors",
+   "artifact": "frozen-suite"
+  },
+  {
+   "from": "fix",
+   "to": "ci-check",
+   "relation": "feeds",
+   "artifact": "patch"
+  },
+  {
+   "from": "fix",
+   "to": "test-review",
+   "relation": "feeds",
+   "artifact": "patch"
+  },
+  {
+   "from": "test-review",
+   "to": "fix",
+   "relation": "observes",
+   "artifact": "test-review-report"
+  },
+  {
+   "from": "ci-check",
+   "to": "merge-gate",
+   "relation": "vetoes",
+   "artifact": "ci-report"
+  },
+  {
+   "from": "test-review",
+   "to": "merge-gate",
+   "relation": "escalates",
+   "artifact": "test-review-report"
+  },
+  {
+   "from": "merge-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "merge-decision"
+  }
+ ],
+ "governance": {
+  "arbitration": {
+   "owner": "Bruce",
+   "priority_policy": "冻结测试通过 > 新增测试有效 > 修复速度"
+  }
+ }
+}

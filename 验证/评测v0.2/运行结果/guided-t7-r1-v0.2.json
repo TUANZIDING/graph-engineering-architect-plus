@@ -1,0 +1,497 @@
+{
+  "schema_version": "1.1",
+  "title": "ICU 72h 再入院预测模型持续改进图",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "root_goal": {
+    "statement": "在不损害患者安全的前提下，持续维持或提升线上 ICU 72 小时再入院预测模型在未来真实患者上的判别力与校准，用于支持（而非替代）临床出科决策",
+    "human_owner": "Bruce",
+    "observable_success": "候选模型在训练从未接触、时间上晚于训练窗口的冻结留出集与前瞻影子期真实结局上：AUC 不劣于线上模型（DeLong 非劣界 0.01，且 95%CI 下界更优才算'提升'）、校准斜率 0.8–1.2 且 Brier 不变差、关键亚组 AUC 不下降超过 0.02；并由 Bruce（及临床负责人）签字后才替换线上模型",
+    "out_of_scope": [
+      "用训练同一个月的数据计算 AUC 作为上线依据",
+      "AUC 上升后无人工签字自动替换线上模型",
+      "Agent 修改留出集、标签定义、评估脚本、阈值或上线规则",
+      "直接据模型输出改变个体患者出科/转科决策"
+    ],
+    "metrics": [
+      "holdout_auc",
+      "calibration_slope",
+      "brier",
+      "subgroup_auc_gap",
+      "prospective_shadow_auc",
+      "alert_rate"
+    ]
+  },
+  "classification_rationale": "原方案是单回路且自评：同一个月数据既训练又算 AUC（样本内/泄漏），AUC 即刷分目标，且直接改线上临床模型（高风险副作用）。需要：独立冻结的时间外留出锚点、独立验证者、校准/亚组/漂移反指标、数据与标签审计、人工上线门和回滚，多个回路节奏不同（周训练、每候选验证、月审计、季度治理），因此是图；训练节点本身是一个有界内部回路，故为 graph_plus_loop",
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "在冻结特征与标签定义内，用标签已成熟的最近数据窗口训练候选模型",
+      "在沙箱中运行冻结评估脚本并生成报告",
+      "以影子模式部署候选（仅记录预测，不影响临床）",
+      "提交上线提议与回滚提议"
+    ],
+    "forbidden_actions": [
+      "未经人工签字替换线上模型",
+      "读取或改写冻结留出集与前瞻影子结局",
+      "修改标签定义、评估脚本、AUC/校准阈值或上线规则",
+      "用训练数据自评作为上线证据",
+      "导出可识别患者数据到受控环境之外"
+    ]
+  },
+  "frozen_rules": [
+    "72 小时再入院标签定义（出 ICU 后 72h 内再入 ICU，计时起点、转院/死亡处理）冻结，仅 Bruce 批准可改",
+    "训练窗口与评估窗口严格时间分离：评估只用训练截止之后、且已满 72h+数据延迟的成熟标签数据；同一患者不跨集",
+    "冻结留出集与评估脚本由数据治理方持有，训练 Agent 只读不到",
+    "上线判据：AUC 95%CI 下界优于线上且校准、Brier、亚组、告警率反指标全部通过，任一失败即否决",
+    "替换线上模型必须经人工门签字，并保留可一键回滚的前一版本"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 2,
+    "max_retries": 2,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "failed": "候选被否决：保留线上模型不变，记录否决原因，下周重新训练；连续 4 周失败升级给 Bruce 复核数据与目标",
+    "blocked": "留出集过期、标签未成熟、数据审计不通过或锚点无法访问时停止训练与上线流程，线上模型保持，升级给 Bruce",
+    "budget_exhausted": "本周不再训练，提交现有证据与 handoff，线上模型保持"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: 候选通过全部冻结检查且 Bruce 签字上线，影子/上线监测稳定 4 周",
+      "failed: 候选被验证或反指标否决，线上不变",
+      "blocked: 锚点过期/数据审计失败/线上性能告警触发回滚，等待人工处理",
+      "budget_exhausted: 重试或成本用尽，交接现状"
+    ],
+    "artifact": "handoff.md（模型版本、评估报告、反指标结果、审计结论、签字记录、回滚指针）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "governance": {
+    "arbitration": {
+      "owner": "Bruce",
+      "priority_policy": "患者安全与数据合规 > 校准与亚组公平 > 前瞻/留出判别力 AUC > 训练效率与更新频率；任一高优先级信号失败即否决低优先级的改进"
+    },
+    "goal_change": "human_approval",
+    "approval_required": [
+      "Root-goal change",
+      "Anchor change",
+      "Permission expansion",
+      "Label definition change",
+      "Promotion threshold change",
+      "Production model replacement"
+    ]
+  },
+  "verification": {
+    "independence_statement": "验证者使用独立团队持有的冻结评估脚本，在训练 Agent 无法访问、时间晚于训练窗口的留出集和前瞻影子期真实结局上评估；评估者与数据来源都独立于训练回路，不复用训练 Agent 自报的 AUC",
+    "checks": [
+      "independent-validator",
+      "counter-metric-check",
+      "data-label-audit"
+    ]
+  },
+  "external_inputs": [
+    "icu_ehr_feed",
+    "readmission_outcome_registry",
+    "frozen_label_definition"
+  ],
+  "anchors": [
+    {
+      "node_id": "frozen-temporal-holdout",
+      "source": "数据治理方从 EHR 抽取、时间晚于训练窗口且标签成熟的 ICU 出科队列，训练环境不可见",
+      "evidence_form": "带哈希的冻结留出数据快照 + 冻结评估脚本输出",
+      "owner": "数据治理负责人（Bruce 指定）",
+      "freshness_rule": "每月由审计回路滚动重建并重新冻结；超过 45 天未确认视为过期，过期则禁止上线",
+      "frozen": true,
+      "max_age_days": 45,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "prospective-shadow-outcomes",
+      "source": "影子部署期间新出科患者的真实 72h 再入院结局（医院再入院登记，非模型产生）",
+      "evidence_form": "影子期预测与登记结局对照表",
+      "owner": "临床质控科",
+      "freshness_rule": "每周更新，仅纳入出科已满 72h 且登记延迟已过的病例；超过 14 天无更新视为过期",
+      "frozen": true,
+      "max_age_days": 14,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "weekly-retrain",
+      "kind": "execution_loop",
+      "responsibility": "每周用标签已成熟的最近训练窗口（截止于留出窗口之前）在冻结特征/标签定义内训练候选模型，内部仅用训练集交叉验证调参",
+      "owner": "训练 Agent",
+      "cadence": "每周",
+      "cadence_tier": "fast",
+      "max_iterations": 5,
+      "optimizes": "holdout_auc",
+      "side_effect": "internal-reversible",
+      "context_scope": "training-only",
+      "evidence_sources": [
+        "icu_ehr_feed:training_window"
+      ],
+      "writes": [
+        "candidate_model_registry"
+      ],
+      "contract": {
+        "inputs": [
+          "icu_ehr_feed",
+          "audited_training_window",
+          "frozen_label_definition"
+        ],
+        "outputs": [
+          "candidate_model",
+          "training_report"
+        ]
+      }
+    },
+    {
+      "id": "data-label-audit",
+      "kind": "audit_loop",
+      "responsibility": "审计训练与留出窗口的时间分离、患者不重叠、标签成熟度、编码与数据管道漂移、特征泄漏（如出科后才产生的变量）",
+      "owner": "数据治理审计员",
+      "cadence": "每月 + 每次训练前快检",
+      "cadence_tier": "slow",
+      "max_iterations": 2,
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "evidence_sources": [
+        "icu_ehr_feed:raw",
+        "readmission_outcome_registry"
+      ],
+      "writes": [
+        "audit_report"
+      ],
+      "contract": {
+        "inputs": [
+          "icu_ehr_feed",
+          "readmission_outcome_registry",
+          "governance_decision"
+        ],
+        "outputs": [
+          "audited_training_window",
+          "audit_report"
+        ]
+      }
+    },
+    {
+      "id": "frozen-temporal-holdout",
+      "kind": "anchor",
+      "responsibility": "提供训练回路不可见、时间外、标签成熟的冻结留出集与评估脚本",
+      "owner": "数据治理负责人",
+      "cadence": "每月重建冻结",
+      "cadence_tier": "governance",
+      "side_effect": "none",
+      "evidence_sources": [
+        "readmission_outcome_registry"
+      ],
+      "writes": [
+        "holdout_snapshot"
+      ],
+      "contract": {
+        "inputs": [
+          "readmission_outcome_registry"
+        ],
+        "outputs": [
+          "holdout_snapshot"
+        ]
+      }
+    },
+    {
+      "id": "prospective-shadow-outcomes",
+      "kind": "anchor",
+      "responsibility": "提供影子期新患者的真实 72h 再入院结局",
+      "owner": "临床质控科",
+      "cadence": "每周",
+      "cadence_tier": "governance",
+      "side_effect": "none",
+      "evidence_sources": [
+        "readmission_outcome_registry"
+      ],
+      "writes": [
+        "shadow_outcome_table"
+      ],
+      "contract": {
+        "inputs": [
+          "readmission_outcome_registry"
+        ],
+        "outputs": [
+          "shadow_outcome_table"
+        ]
+      }
+    },
+    {
+      "id": "independent-validator",
+      "kind": "verification_loop",
+      "responsibility": "用冻结脚本在冻结留出集与影子结局上比较候选与线上模型的 AUC（含 95%CI、DeLong），不接受训练报告中的分数",
+      "owner": "独立验证团队",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "evidence_sources": [
+        "holdout_snapshot",
+        "shadow_outcome_table"
+      ],
+      "writes": [
+        "validation_report"
+      ],
+      "contract": {
+        "inputs": [
+          "candidate_model",
+          "holdout_snapshot",
+          "shadow_outcome_table"
+        ],
+        "outputs": [
+          "validation_report"
+        ]
+      }
+    },
+    {
+      "id": "counter-metric-check",
+      "kind": "counter_metric_loop",
+      "responsibility": "检查 AUC 之外的反指标：校准斜率/截距、Brier、关键亚组（年龄、性别、诊断类别、科室）AUC 差、告警率与 PPV、特征分布漂移",
+      "owner": "临床统计负责人",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "evidence_sources": [
+        "holdout_snapshot",
+        "shadow_outcome_table"
+      ],
+      "writes": [
+        "counter_metric_report"
+      ],
+      "contract": {
+        "inputs": [
+          "candidate_model",
+          "holdout_snapshot",
+          "shadow_outcome_table"
+        ],
+        "outputs": [
+          "counter_metric_report"
+        ]
+      }
+    },
+    {
+      "id": "promotion-arbiter",
+      "kind": "arbitration",
+      "responsibility": "按 priority_policy 汇总验证、反指标与审计结论，形成上线/否决/回滚提议",
+      "owner": "Bruce",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "priority_policy": "患者安全与数据合规 > 校准与亚组公平 > 判别力 AUC > 更新频率；任一高优先级失败即否决",
+      "side_effect": "none",
+      "writes": [
+        "promotion_proposal"
+      ],
+      "contract": {
+        "inputs": [
+          "validation_report",
+          "counter_metric_report",
+          "audit_report"
+        ],
+        "outputs": [
+          "promotion_proposal"
+        ]
+      }
+    },
+    {
+      "id": "deploy-gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 与临床负责人审阅提议、影子期真实结局并签字；未签字则线上模型不变",
+      "owner": "Bruce",
+      "cadence": "按需",
+      "cadence_tier": "human",
+      "side_effect": "none",
+      "writes": [
+        "signed_deployment_decision"
+      ],
+      "contract": {
+        "inputs": [
+          "promotion_proposal",
+          "shadow_outcome_table"
+        ],
+        "outputs": [
+          "signed_deployment_decision"
+        ]
+      }
+    },
+    {
+      "id": "model-deploy",
+      "kind": "execution",
+      "responsibility": "仅凭签字记录替换线上模型指针，保留上一版本可一键回滚，上线后监测告警触发自动回滚到旧版",
+      "owner": "MLOps 部署服务",
+      "cadence": "按签字",
+      "cadence_tier": "human",
+      "side_effect": "high-risk",
+      "writes": [
+        "production_model_pointer"
+      ],
+      "contract": {
+        "inputs": [
+          "signed_deployment_decision"
+        ],
+        "outputs": [
+          "deployment_record_with_rollback_pointer"
+        ]
+      }
+    },
+    {
+      "id": "governance-review",
+      "kind": "governance_loop",
+      "responsibility": "季度审视根目标、标签定义、阈值、训练窗口长度、更新频率是否仍合理；只能提议修改，由 Bruce 批准",
+      "owner": "Bruce",
+      "cadence": "每季度",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "side_effect": "none",
+      "writes": [
+        "governance_decision"
+      ],
+      "contract": {
+        "inputs": [
+          "audit_report"
+        ],
+        "outputs": [
+          "governance_decision"
+        ]
+      }
+    },
+    {
+      "id": "stop-handoff",
+      "kind": "stop_handoff",
+      "responsibility": "记录终态（completed/failed/blocked/budget_exhausted）、线上版本、回滚指针与证据，交接给 Bruce",
+      "owner": "Bruce",
+      "cadence": "每周期结束",
+      "cadence_tier": "human",
+      "side_effect": "none",
+      "writes": [
+        "handoff_record"
+      ],
+      "contract": {
+        "inputs": [
+          "deployment_record_with_rollback_pointer"
+        ],
+        "outputs": [
+          "handoff_record"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "data-label-audit",
+      "to": "weekly-retrain",
+      "relation": "constrains",
+      "artifact": "audited_training_window"
+    },
+    {
+      "from": "weekly-retrain",
+      "to": "independent-validator",
+      "relation": "feeds",
+      "artifact": "candidate_model"
+    },
+    {
+      "from": "weekly-retrain",
+      "to": "counter-metric-check",
+      "relation": "feeds",
+      "artifact": "candidate_model"
+    },
+    {
+      "from": "frozen-temporal-holdout",
+      "to": "independent-validator",
+      "relation": "anchors",
+      "artifact": "holdout_snapshot"
+    },
+    {
+      "from": "prospective-shadow-outcomes",
+      "to": "independent-validator",
+      "relation": "anchors",
+      "artifact": "shadow_outcome_table"
+    },
+    {
+      "from": "frozen-temporal-holdout",
+      "to": "counter-metric-check",
+      "relation": "anchors",
+      "artifact": "holdout_snapshot"
+    },
+    {
+      "from": "prospective-shadow-outcomes",
+      "to": "counter-metric-check",
+      "relation": "anchors",
+      "artifact": "shadow_outcome_table"
+    },
+    {
+      "from": "independent-validator",
+      "to": "promotion-arbiter",
+      "relation": "vetoes",
+      "artifact": "validation_report"
+    },
+    {
+      "from": "counter-metric-check",
+      "to": "promotion-arbiter",
+      "relation": "vetoes",
+      "artifact": "counter_metric_report"
+    },
+    {
+      "from": "data-label-audit",
+      "to": "promotion-arbiter",
+      "relation": "vetoes",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "promotion-arbiter",
+      "to": "deploy-gate",
+      "relation": "escalates",
+      "artifact": "promotion_proposal"
+    },
+    {
+      "from": "data-label-audit",
+      "to": "governance-review",
+      "relation": "escalates",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "governance-review",
+      "to": "data-label-audit",
+      "relation": "constrains",
+      "artifact": "governance_decision"
+    },
+    {
+      "from": "independent-validator",
+      "to": "weekly-retrain",
+      "relation": "observes",
+      "artifact": "validation_report"
+    },
+    {
+      "from": "prospective-shadow-outcomes",
+      "to": "deploy-gate",
+      "relation": "anchors",
+      "artifact": "shadow_outcome_table"
+    },
+    {
+      "from": "deploy-gate",
+      "to": "model-deploy",
+      "relation": "constrains",
+      "artifact": "signed_deployment_decision (approval-record)"
+    },
+    {
+      "from": "model-deploy",
+      "to": "stop-handoff",
+      "relation": "hands_off",
+      "artifact": "deployment_record_with_rollback_pointer"
+    }
+  ]
+}

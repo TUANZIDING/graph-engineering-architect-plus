@@ -1,0 +1,280 @@
+{
+ "schema_version": "1.1",
+ "title": "ICU 72 小时再入院模型每周重训",
+ "mode": "graph_plus_loop",
+ "state": "awaiting_approval",
+ "root_goal": {
+  "statement": "让线上再入院预测对未来病人保持准确且校准良好",
+  "human_owner": "Bruce",
+  "observable_success": "新模型在时间外留出月（训练从未见过）上 AUC 不劣于线上模型，校准与亚组表现达标，Bruce 批准替换",
+  "metrics": [
+   "out_of_time_auc"
+  ]
+ },
+ "external_inputs": [
+  "ehr-outcomes",
+  "train-window",
+  "drift-log",
+  "graph-spec",
+  "run-status"
+ ],
+ "permissions": {
+  "human_owner": "Bruce",
+  "allowed_actions": [
+   "每周离线重训候选模型",
+   "生成对比报告"
+  ],
+  "forbidden_actions": [
+   "自动替换线上模型",
+   "用训练同月数据作为验收集",
+   "修改时间外留出月"
+  ]
+ },
+ "frozen_rules": [
+  "验收只用训练窗口之后的时间外留出月",
+  "替换线上模型须 Bruce 批准"
+ ],
+ "approval": {
+  "status": "pending",
+  "record": "等待 Bruce 确认 Graph"
+ },
+ "budget": {
+  "max_agents": 5,
+  "max_concurrency": 2,
+  "max_retries": 1,
+  "max_cost_units": 30
+ },
+ "failure_policy": {
+  "on_validation_failure": "stop_and_handoff",
+  "on_budget_exhausted": "handoff_to_human"
+ },
+ "stop_handoff": {
+  "owner": "Bruce",
+  "conditions": [
+   "时间外表现下降",
+   "校准失败",
+   "预算耗尽",
+   "锚点过期"
+  ],
+  "artifact": "handoff-record"
+ },
+ "execution_contract": {
+  "external_execution": false
+ },
+ "anchors": [
+  {
+   "node_id": "oot",
+   "source": "训练窗口之后一个月的时间外留出数据与真实再入院结局",
+   "evidence_form": "留出月哈希与结局表",
+   "owner": "Bruce",
+   "freshness_rule": "每次运行前核对；超过 max_age_days 需重新确认",
+   "max_age_days": 30,
+   "last_confirmed": "2026-11-10",
+   "frozen": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "approval",
+   "kind": "human_gate",
+   "responsibility": "确认目标、锚点、权限与图",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "graph-spec"
+    ],
+    "outputs": [
+     "approval-record"
+    ]
+   }
+  },
+  {
+   "id": "oot",
+   "kind": "anchor",
+   "responsibility": "冻结的时间外留出月与真实结局，训练不可见",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "ehr-outcomes"
+    ],
+    "outputs": [
+     "oot-set"
+    ]
+   }
+  },
+  {
+   "id": "retrain",
+   "kind": "execution_loop",
+   "responsibility": "用最近一个月数据重训候选模型",
+   "owner": "建模 Agent",
+   "contract": {
+    "inputs": [
+     "approval-record",
+     "train-window"
+    ],
+    "outputs": [
+     "candidate-model"
+    ]
+   },
+   "optimizes": "out_of_time_auc",
+   "max_iterations": 3,
+   "evidence_sources": [
+    "train-window"
+   ],
+   "writes": [
+    "models/"
+   ]
+  },
+  {
+   "id": "oot-eval",
+   "kind": "verification_loop",
+   "responsibility": "在时间外留出月上独立评估候选与线上模型",
+   "owner": "评估脚本",
+   "contract": {
+    "inputs": [
+     "candidate-model",
+     "oot-set"
+    ],
+    "outputs": [
+     "oot-report"
+    ]
+   },
+   "context_scope": "fresh-independent",
+   "max_iterations": 1,
+   "evidence_sources": [
+    "oot-set"
+   ]
+  },
+  {
+   "id": "calib-watch",
+   "kind": "counter_metric_loop",
+   "responsibility": "监测校准、数据漂移与亚组表现",
+   "owner": "质控统计员",
+   "contract": {
+    "inputs": [
+     "candidate-model"
+    ],
+    "outputs": [
+     "calibration-report"
+    ]
+   },
+   "max_iterations": 1,
+   "evidence_sources": [
+    "drift-log"
+   ]
+  },
+  {
+   "id": "arbiter",
+   "kind": "arbitration",
+   "responsibility": "区分度与校准冲突时裁决",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "oot-report",
+     "calibration-report"
+    ],
+    "outputs": [
+     "recommendation"
+    ]
+   },
+   "priority_policy": "校准与亚组安全 > 时间外 AUC > 训练月 AUC"
+  },
+  {
+   "id": "deploy-gate",
+   "kind": "human_gate",
+   "responsibility": "Bruce 批准替换线上模型",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "recommendation"
+    ],
+    "outputs": [
+     "deploy-decision"
+    ]
+   },
+   "side_effect": "high-risk"
+  },
+  {
+   "id": "stop",
+   "kind": "stop_handoff",
+   "responsibility": "收束或失败时交接",
+   "owner": "Bruce",
+   "contract": {
+    "inputs": [
+     "run-status"
+    ],
+    "outputs": [
+     "handoff-record"
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "approval",
+   "to": "retrain",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "approval",
+   "to": "oot",
+   "relation": "constrains",
+   "artifact": "approval-record"
+  },
+  {
+   "from": "oot",
+   "to": "oot-eval",
+   "relation": "anchors",
+   "artifact": "oot-set"
+  },
+  {
+   "from": "retrain",
+   "to": "oot-eval",
+   "relation": "feeds",
+   "artifact": "candidate-model"
+  },
+  {
+   "from": "retrain",
+   "to": "calib-watch",
+   "relation": "feeds",
+   "artifact": "candidate-model"
+  },
+  {
+   "from": "calib-watch",
+   "to": "retrain",
+   "relation": "observes",
+   "artifact": "calibration-report"
+  },
+  {
+   "from": "oot-eval",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "oot-report"
+  },
+  {
+   "from": "calib-watch",
+   "to": "arbiter",
+   "relation": "escalates",
+   "artifact": "calibration-report"
+  },
+  {
+   "from": "oot-eval",
+   "to": "deploy-gate",
+   "relation": "vetoes",
+   "artifact": "oot-report"
+  },
+  {
+   "from": "arbiter",
+   "to": "deploy-gate",
+   "relation": "constrains",
+   "artifact": "recommendation"
+  },
+  {
+   "from": "deploy-gate",
+   "to": "stop",
+   "relation": "hands_off",
+   "artifact": "deploy-decision"
+  }
+ ]
+}

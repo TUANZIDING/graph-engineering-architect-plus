@@ -1,0 +1,474 @@
+{
+  "schema_version": "1.1",
+  "title": "睡眠起始检测竞赛自动迭代控制图",
+  "mode": "graph_plus_loop",
+  "state": "designed",
+  "classification": {
+    "mode": "graph_plus_loop",
+    "rationale": "多个 Agent 在调参/特征/融合上快速迭代，本地 CV 与公开榜分数都可被过拟合（Goodhart），公开榜每天仅 5 次、最终阶段仅 1 次且不可逆，需要独立验证、反指标、审计、配额仲裁和人工最终门；执行节点内部是有界迭代回路，故为 graph_plus_loop。"
+  },
+  "root_goal": {
+    "statement": "提高隐藏测试集上的睡眠起始检测最终成绩，并由 Bruce 决定唯一一次最终上传",
+    "human_owner": "Bruce",
+    "observable_success": "最终候选在冻结的受试者级本地留出集上优于基线且置信区间不重叠，CV-公开榜相关性审计通过、无泄漏，Bruce 签字后完成唯一一次最终上传",
+    "metrics": [
+      "hidden_test_score",
+      "frozen_holdout_score",
+      "local_cv_score",
+      "public_lb_score"
+    ],
+    "out_of_scope": [
+      "Agent 自主进行最终阶段上传",
+      "使用外部未授权数据或违反竞赛规则",
+      "超出每日 5 次的公开榜提交",
+      "修改冻结留出集或评估脚本"
+    ],
+    "metric_notes": "hidden_test_score 为结果指标（仅最终揭晓）；frozen_holdout_score 为主代理；local_cv_score 为执行回路的诊断代理，只有在 frozen_holdout_score 上复现才算数；public_lb_score 易过拟合，仅作反指标。"
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "在训练折内调参、做特征、训练与融合模型",
+      "运行冻结评估脚本",
+      "在仲裁分配的配额内提交公开榜",
+      "生成最终候选包与报告"
+    ],
+    "forbidden_actions": [
+      "最终阶段上传",
+      "读取或修改冻结留出集标签",
+      "修改评估脚本、阈值或配额规则",
+      "超过每日 5 次公开榜提交",
+      "以公开榜分数直接挑选最终模型而不经留出集验证"
+    ]
+  },
+  "frozen_rules": [
+    "受试者级本地留出集划分与哈希冻结，执行 Agent 只读不可见标签",
+    "评估脚本与指标定义（含事件容差）冻结，改动只能提议，经 Bruce 批准",
+    "公开榜每日最多 5 次，至少保留 1 次给人工指定",
+    "最终阶段唯一一次上传只能由 Bruce 执行或明确授权",
+    "公开榜分数只作为反指标/校验，不作为模型选择主依据"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 500
+  },
+  "failure_policy": {
+    "failed": "验证否决或审计发现泄漏 → 候选作废，回滚到上一个通过版本",
+    "blocked": "留出集/评估脚本哈希校验失败或规则不明 → 暂停全部执行并升级 Bruce",
+    "stalled": "连续 3 轮无冻结留出集显著提升 → 停止迭代，交接当前最佳候选",
+    "budget_exhausted": "迭代/成本预算用尽 → 交接最佳候选与报告给 Bruce"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "completed: Bruce 签字并完成最终上传",
+      "blocked: 留出集/评估脚本完整性校验失败或规则不明",
+      "stalled: 连续 3 轮无可验证提升",
+      "budget_exhausted: 迭代/成本预算用尽"
+    ],
+    "artifact": "handoff.md（最佳候选包 sha256、留出集指标与 CI、CV-公开榜一致性报告、审计结论、剩余风险）"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "verification": {
+    "independence_statement": "验证者以全新上下文运行冻结评估脚本于执行者不可见标签的冻结留出集，数据来源与评估代码均不由执行者生成或改写。"
+  },
+  "external_inputs": [
+    "competition_train_data",
+    "public_leaderboard_feedback",
+    "competition_rules"
+  ],
+  "anchors": [
+    {
+      "node_id": "holdout_anchor",
+      "source": "比赛训练数据中按受试者划分并哈希冻结的本地留出集 + 冻结评估脚本",
+      "evidence_form": "评估脚本实际执行输出的分数、CI 与数据/脚本 sha256",
+      "owner": "Bruce",
+      "freshness_rule": "每次评估前校验哈希；比赛规则或数据版本变化即失效，需 Bruce 重新确认",
+      "frozen": true,
+      "max_age_days": 30,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "public_lb_anchor",
+      "source": "竞赛平台公开排行榜（外部服务计算）",
+      "evidence_form": "平台返回的提交记录与分数截图/日志",
+      "owner": "Bruce",
+      "freshness_rule": "每次提交即时有效；只反映公开子集，不代表隐藏集",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "tuning_loop",
+      "kind": "execution_loop",
+      "responsibility": "多个 Agent 在训练折内调参、做特征、训练与融合，产出候选",
+      "owner": "agent:tuner",
+      "cadence": "每次迭代（分钟到小时）",
+      "cadence_tier": "fast",
+      "max_iterations": 50,
+      "optimizes": "local_cv_score",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "candidates/"
+      ],
+      "evidence_sources": [
+        "competition_train_data(训练折)"
+      ],
+      "contract": {
+        "inputs": [
+          "competition_train_data",
+          "constraints_from_arbiter",
+          "verdict_holdout"
+        ],
+        "outputs": [
+          "candidate_package",
+          "cv_report"
+        ]
+      }
+    },
+    {
+      "id": "holdout_anchor",
+      "kind": "anchor",
+      "responsibility": "提供冻结受试者级留出集与评估脚本",
+      "owner": "Bruce",
+      "cadence": "冻结，按需校验",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "competition_train_data"
+        ],
+        "outputs": [
+          "frozen_holdout_eval"
+        ]
+      }
+    },
+    {
+      "id": "public_lb_anchor",
+      "kind": "anchor",
+      "responsibility": "外部平台对仲裁者在配额内提交的公开榜结果计分，作为独立来源（Agent 无法改写平台分数）",
+      "owner": "Bruce",
+      "cadence": "每次公开提交",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "public_leaderboard_feedback"
+        ],
+        "outputs": [
+          "public_lb_score"
+        ]
+      }
+    },
+    {
+      "id": "holdout_verifier",
+      "kind": "verification_loop",
+      "responsibility": "全新上下文对每个候选运行冻结评估于留出集，计算 CI，校验哈希，判通过/否决",
+      "owner": "agent:verifier",
+      "cadence": "每个候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "frozen_holdout"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "verification/"
+      ],
+      "contract": {
+        "inputs": [
+          "candidate_package",
+          "frozen_holdout_eval"
+        ],
+        "outputs": [
+          "verdict_holdout"
+        ]
+      }
+    },
+    {
+      "id": "overfit_counter",
+      "kind": "counter_metric_loop",
+      "responsibility": "反指标：CV-留出-公开榜分差、受试者间方差、校准、事件时延误差分布、模型复杂度/融合权重稳定性",
+      "owner": "agent:counter",
+      "cadence": "每个通过验证的候选",
+      "cadence_tier": "medium",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "frozen_holdout",
+        "public_leaderboard"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "counter/"
+      ],
+      "contract": {
+        "inputs": [
+          "verdict_holdout",
+          "public_lb_score",
+          "frozen_holdout_eval"
+        ],
+        "outputs": [
+          "overfit_report"
+        ]
+      }
+    },
+    {
+      "id": "quota_arbiter",
+      "kind": "arbitration",
+      "responsibility": "分配每日 5 次公开榜配额（≤4 次给 Agent），在验证与反指标冲突时取舍，向执行回路下发约束",
+      "owner": "agent:arbiter",
+      "cadence": "每日",
+      "cadence_tier": "slow",
+      "priority_policy": "规则合规 > 无泄漏 > 冻结留出集显著提升 > 反指标（过拟合差距、稳定性）> 公开榜分数；冲突无法裁决则升级 Bruce",
+      "side_effect": "internal-reversible",
+      "writes": [
+        "quota_ledger"
+      ],
+      "contract": {
+        "inputs": [
+          "verdict_holdout",
+          "overfit_report",
+          "audit_report"
+        ],
+        "outputs": [
+          "constraints_from_arbiter",
+          "public_submission",
+          "shortlist"
+        ]
+      }
+    },
+    {
+      "id": "leakage_audit",
+      "kind": "audit_loop",
+      "responsibility": "审计数据泄漏（受试者跨折、未来信息）、留出集/脚本哈希完整性、CV 与公开榜相关性漂移、规则合规",
+      "owner": "agent:auditor",
+      "cadence": "每周及最终候选前",
+      "cadence_tier": "governance",
+      "max_iterations": 1,
+      "context_scope": "fresh-independent",
+      "evidence_sources": [
+        "frozen_holdout",
+        "public_leaderboard",
+        "competition_rules",
+        "raw_code_and_logs"
+      ],
+      "side_effect": "none",
+      "writes": [
+        "audit/"
+      ],
+      "contract": {
+        "inputs": [
+          "candidate_package",
+          "frozen_holdout_eval",
+          "public_lb_score",
+          "competition_rules"
+        ],
+        "outputs": [
+          "audit_report",
+          "rule_change_proposal"
+        ]
+      }
+    },
+    {
+      "id": "final_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 审阅最终候选清单与证据，决定唯一一次最终上传及任何冻结规则修改",
+      "owner": "Bruce",
+      "cadence": "最终阶段及规则变更时",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "shortlist",
+          "audit_report",
+          "overfit_report",
+          "rule_change_proposal",
+          "verdict_holdout"
+        ],
+        "outputs": [
+          "final_decision",
+          "approved_rule_changes"
+        ]
+      }
+    },
+    {
+      "id": "final_upload",
+      "kind": "execution",
+      "responsibility": "按 Bruce 签字的候选执行唯一一次最终阶段上传（或由 Bruce 本人上传）",
+      "owner": "Bruce",
+      "cadence": "一次",
+      "cadence_tier": "human",
+      "side_effect": "high-risk",
+      "writes": [
+        "final_submission"
+      ],
+      "contract": {
+        "inputs": [
+          "final_decision"
+        ],
+        "outputs": [
+          "final_submission_receipt"
+        ]
+      }
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "按终态写交接文件",
+      "owner": "Bruce",
+      "cadence": "终止时",
+      "cadence_tier": "human",
+      "contract": {
+        "inputs": [
+          "final_submission_receipt",
+          "audit_report"
+        ],
+        "outputs": [
+          "handoff.md"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "tuning_loop",
+      "to": "holdout_verifier",
+      "relation": "feeds",
+      "artifact": "candidate_package"
+    },
+    {
+      "from": "holdout_anchor",
+      "to": "holdout_verifier",
+      "relation": "anchors",
+      "artifact": "frozen_holdout_eval"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "tuning_loop",
+      "relation": "vetoes",
+      "artifact": "verdict_holdout"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "overfit_counter",
+      "relation": "feeds",
+      "artifact": "verdict_holdout"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "quota_arbiter",
+      "relation": "verifies",
+      "artifact": "verdict_holdout"
+    },
+    {
+      "from": "holdout_anchor",
+      "to": "overfit_counter",
+      "relation": "anchors",
+      "artifact": "frozen_holdout_eval"
+    },
+    {
+      "from": "public_lb_anchor",
+      "to": "overfit_counter",
+      "relation": "anchors",
+      "artifact": "public_lb_score"
+    },
+    {
+      "from": "overfit_counter",
+      "to": "quota_arbiter",
+      "relation": "constrains",
+      "artifact": "overfit_report"
+    },
+    {
+      "from": "overfit_counter",
+      "to": "final_gate",
+      "relation": "feeds",
+      "artifact": "overfit_report"
+    },
+    {
+      "from": "quota_arbiter",
+      "to": "tuning_loop",
+      "relation": "constrains",
+      "artifact": "constraints_from_arbiter"
+    },
+    {
+      "from": "quota_arbiter",
+      "to": "final_gate",
+      "relation": "escalates",
+      "artifact": "shortlist"
+    },
+    {
+      "from": "tuning_loop",
+      "to": "leakage_audit",
+      "relation": "observes",
+      "artifact": "candidate_package"
+    },
+    {
+      "from": "holdout_anchor",
+      "to": "leakage_audit",
+      "relation": "anchors",
+      "artifact": "frozen_holdout_eval"
+    },
+    {
+      "from": "public_lb_anchor",
+      "to": "leakage_audit",
+      "relation": "anchors",
+      "artifact": "public_lb_score"
+    },
+    {
+      "from": "leakage_audit",
+      "to": "quota_arbiter",
+      "relation": "vetoes",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "leakage_audit",
+      "to": "final_gate",
+      "relation": "vetoes",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "leakage_audit",
+      "to": "final_gate",
+      "relation": "escalates",
+      "artifact": "rule_change_proposal"
+    },
+    {
+      "from": "final_gate",
+      "to": "final_upload",
+      "relation": "constrains",
+      "artifact": "final_decision"
+    },
+    {
+      "from": "final_gate",
+      "to": "holdout_anchor",
+      "relation": "revises",
+      "artifact": "approved_rule_changes"
+    },
+    {
+      "from": "final_upload",
+      "to": "stop_handoff",
+      "relation": "hands_off",
+      "artifact": "final_submission_receipt"
+    },
+    {
+      "from": "leakage_audit",
+      "to": "stop_handoff",
+      "relation": "feeds",
+      "artifact": "audit_report"
+    },
+    {
+      "from": "holdout_verifier",
+      "to": "final_gate",
+      "relation": "vetoes",
+      "artifact": "verdict_holdout"
+    }
+  ]
+}

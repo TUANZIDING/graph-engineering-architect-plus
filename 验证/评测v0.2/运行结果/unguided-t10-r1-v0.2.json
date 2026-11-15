@@ -1,0 +1,242 @@
+{
+  "schema_version": "1.1",
+  "title": "急诊出院流程双 Agent 改进控制架构",
+  "mode": "graph_plus_loop",
+  "rationale": "两个 Agent 优化互相拉扯的指标（滞留时间 vs 72h 返诊率），且都想写同一共享资源（出院标准/流程清单），涉及患者安全的高风险变更；需要单写者、仲裁、反指标配对、独立验证、现实锚点与人类审批门，并以有上限的迭代循环推进，因此为 graph_plus_loop。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在不增加患者安全风险的前提下，同时缩短急诊滞留时间并降低 72 小时返诊率，产出经临床审批、可试点的出院标准与流程清单修订版本。",
+    "human_owner": "Bruce",
+    "observable_success": "试点期（≥4 周）急诊中位滞留时间较基线下降且 72h 返诊率不高于基线（非劣效界值预先冻结），72h 返诊后入院/ICU/死亡等安全事件不增加，所有上线变更均有审批记录。",
+    "metrics": ["ed_length_of_stay_median", "return_visit_rate_72h", "return_admission_rate_72h", "adverse_event_rate", "left_without_being_seen_rate", "inpatient_boarding_time"]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "读取去标识化急诊就诊与返诊数据",
+      "提出出院标准与流程清单的修订提案",
+      "在历史数据上做回顾性模拟与分析",
+      "生成变更差异、证据报告与试点方案"
+    ],
+    "forbidden_actions": [
+      "直接修改生产环境的出院标准或流程清单",
+      "对个体患者做出院决策或下达医嘱",
+      "修改指标定义、基线数据或非劣效界值",
+      "访问可识别身份的患者数据",
+      "两个优化 Agent 直接互改对方提案"
+    ]
+  },
+  "frozen_rules": [
+    "出院标准与流程清单只有一个写者：变更集成节点，且仅在人类审批通过后写入版本库",
+    "任何变更不得降低红旗症状筛查、生命体征出院阈值与高危人群（老人、儿童、胸痛、头外伤等）的安全底线",
+    "72h 返诊率、滞留时间、安全事件的定义、数据口径与基线冻结，Agent 不得修改",
+    "滞留时间 Agent 的每个提案必须经返诊/安全反指标评估；返诊 Agent 的每个提案必须经滞留时间反指标评估",
+    "冲突由仲裁节点按安全优先策略裁决，无法裁决时升级给 Bruce",
+    "上线仅限经伦理/医务科批准的分阶段试点，可随时回滚"
+  ],
+  "approval": {"status": "pending"},
+  "budget": {"max_agents": 9, "max_concurrency": 3, "max_retries": 2, "max_cost_units": 200},
+  "failure_policy": "任一验证失败则提案退回对应优化循环（最多 2 次重试）；安全监测触发阈值（返诊入院或不良事件超出非劣效界值、数据断流、锚点过期）立即冻结试点并回滚到上一已批准版本，交 Bruce 处理；超出预算或迭代上限即停止并交接。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "达到 observable_success 并完成试点评估",
+      "优化循环达到 max_iterations 仍无可通过验证的提案",
+      "安全监测触发停止阈值",
+      "仲裁无法在安全优先策略内裁决",
+      "锚点数据超过 max_age_days 未确认",
+      "预算耗尽"
+    ],
+    "artifact": "交接包：当前已批准版本、未决提案、双指标与安全指标趋势、验证与仲裁记录、回滚说明"
+  },
+  "execution_contract": {"external_execution": false},
+  "external_inputs": ["deidentified_ed_visit_data", "hospital_discharge_policy_current", "clinical_guidelines"],
+  "anchors": [
+    {
+      "node_id": "anchor_ed_outcomes",
+      "source": "医院 HIS/EMR 去标识化急诊就诊与 72h 返诊记录（信息科提供）",
+      "evidence_form": "按周导出的就诊级数据表，含到达/离开时间、出院诊断、72h 内返诊、返诊后入院/ICU/死亡",
+      "owner": "Bruce",
+      "freshness_rule": "每周更新；口径变化需信息科书面确认",
+      "frozen": true,
+      "max_age_days": 7,
+      "last_confirmed": "2026-11-15"
+    },
+    {
+      "node_id": "anchor_clinical_safety_floor",
+      "source": "急诊科临床指南与医务科出院安全底线文件",
+      "evidence_form": "已签批的安全底线清单（红旗症状、生命体征阈值、高危人群规则）",
+      "owner": "Bruce",
+      "freshness_rule": "每季度复核或指南更新时复核",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_ed_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供冻结口径的急诊结局真实数据与基线",
+      "owner": "Bruce",
+      "contract": {"inputs": ["deidentified_ed_visit_data"], "outputs": ["outcome_dataset", "frozen_baseline"]},
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "anchor_clinical_safety_floor",
+      "kind": "anchor",
+      "responsibility": "提供不可突破的临床安全底线",
+      "owner": "Bruce",
+      "contract": {"inputs": ["clinical_guidelines", "hospital_discharge_policy_current"], "outputs": ["safety_floor"]},
+      "side_effect": "none",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "los_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "Agent A：分析滞留瓶颈，提出缩短滞留时间的出院标准/清单修订提案（只产出提案，不写共享资源）",
+      "owner": "Bruce",
+      "contract": {"inputs": ["outcome_dataset", "frozen_baseline", "safety_floor", "current_approved_version", "rejection_feedback"], "outputs": ["los_proposal"]},
+      "optimizes": "ed_length_of_stay_median",
+      "evidence_sources": ["outcome_dataset"],
+      "side_effect": "none",
+      "writes": ["los_proposal_store"],
+      "max_iterations": 5,
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "return_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "Agent B：分析 72h 返诊原因，提出降低返诊率的出院标准/清单修订提案（只产出提案，不写共享资源）",
+      "owner": "Bruce",
+      "contract": {"inputs": ["outcome_dataset", "frozen_baseline", "safety_floor", "current_approved_version", "rejection_feedback"], "outputs": ["return_proposal"]},
+      "optimizes": "return_visit_rate_72h",
+      "evidence_sources": ["outcome_dataset"],
+      "side_effect": "none",
+      "writes": ["return_proposal_store"],
+      "max_iterations": 5,
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "counter_metric_check",
+      "kind": "counter_metric_loop",
+      "responsibility": "对每个提案做交叉反指标评估：A 提案评估返诊/返诊入院/不良事件，B 提案评估滞留时间/滞留床位/离院未就诊率，识别 Goodhart 式博弈（如改口径、把患者推向留观或转院）",
+      "owner": "Bruce",
+      "contract": {"inputs": ["los_proposal", "return_proposal", "outcome_dataset", "frozen_baseline"], "outputs": ["counter_metric_report"]},
+      "evidence_sources": ["outcome_dataset", "frozen_baseline"],
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "max_iterations": 3,
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "safety_verifier",
+      "kind": "verification_loop",
+      "responsibility": "独立上下文核查提案是否突破临床安全底线、指标口径是否被改动、回顾性模拟是否可复现",
+      "owner": "Bruce",
+      "contract": {"inputs": ["los_proposal", "return_proposal", "safety_floor", "outcome_dataset"], "outputs": ["verification_report"]},
+      "evidence_sources": ["safety_floor", "outcome_dataset"],
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "max_iterations": 3,
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "proposal_arbiter",
+      "kind": "arbitration",
+      "responsibility": "合并两个 Agent 的提案，裁决冲突条款，形成单一候选修订版",
+      "owner": "Bruce",
+      "priority_policy": "患者安全底线 > 72h 返诊入院/不良事件非劣效 > 72h 返诊率 > 滞留时间 > 执行负担；无法在此顺序内裁决则升级 Bruce",
+      "contract": {"inputs": ["los_proposal", "return_proposal", "counter_metric_report", "verification_report"], "outputs": ["candidate_revision", "rejection_feedback", "escalation_note"]},
+      "side_effect": "none",
+      "cadence_tier": "medium"
+    },
+    {
+      "id": "clinical_approval_gate",
+      "kind": "human_gate",
+      "responsibility": "Bruce 联合急诊科主任/医务科审批候选修订版与试点方案",
+      "owner": "Bruce",
+      "contract": {"inputs": ["candidate_revision", "counter_metric_report", "verification_report", "escalation_note"], "outputs": ["approved_revision", "approval_record"]},
+      "side_effect": "high-risk",
+      "cadence_tier": "human"
+    },
+    {
+      "id": "change_integrator",
+      "kind": "reducer",
+      "responsibility": "唯一写者：将已批准修订写入出院标准/清单版本库，保留版本与回滚点",
+      "owner": "Bruce",
+      "contract": {"inputs": ["approved_revision", "approval_record"], "outputs": ["current_approved_version"]},
+      "writes": ["discharge_criteria_and_checklist"],
+      "side_effect": "internal-reversible",
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "pilot_safety_monitor",
+      "kind": "audit_loop",
+      "responsibility": "试点期每周独立审计双指标与安全指标，对照锚点与非劣效界值，触发阈值则冻结并回滚",
+      "owner": "Bruce",
+      "contract": {"inputs": ["current_approved_version", "outcome_dataset", "frozen_baseline", "safety_floor"], "outputs": ["pilot_audit_report", "rollback_signal"]},
+      "evidence_sources": ["outcome_dataset", "safety_floor"],
+      "context_scope": "fresh-independent",
+      "side_effect": "none",
+      "max_iterations": 8,
+      "cadence_tier": "slow"
+    },
+    {
+      "id": "governance_review",
+      "kind": "governance_loop",
+      "responsibility": "按月复核冻结规则、权限、预算、锚点新鲜度与 Agent 是否出现指标博弈",
+      "owner": "Bruce",
+      "contract": {"inputs": ["pilot_audit_report", "approval_record", "counter_metric_report"], "outputs": ["governance_decision"]},
+      "side_effect": "none",
+      "max_iterations": 6,
+      "cadence_tier": "governance"
+    },
+    {
+      "id": "handoff",
+      "kind": "stop_handoff",
+      "responsibility": "满足停止条件时生成交接包交给 Bruce",
+      "owner": "Bruce",
+      "contract": {"inputs": ["pilot_audit_report", "rollback_signal", "governance_decision", "escalation_note"], "outputs": ["handoff_package"]},
+      "side_effect": "none",
+      "cadence_tier": "human"
+    }
+  ],
+  "edges": [
+    {"from": "anchor_ed_outcomes", "to": "los_optimizer", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_ed_outcomes", "to": "return_optimizer", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_ed_outcomes", "to": "counter_metric_check", "relation": "anchors", "artifact": "frozen_baseline"},
+    {"from": "anchor_ed_outcomes", "to": "safety_verifier", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_ed_outcomes", "to": "pilot_safety_monitor", "relation": "anchors", "artifact": "outcome_dataset"},
+    {"from": "anchor_clinical_safety_floor", "to": "los_optimizer", "relation": "constrains", "artifact": "safety_floor"},
+    {"from": "anchor_clinical_safety_floor", "to": "return_optimizer", "relation": "constrains", "artifact": "safety_floor"},
+    {"from": "anchor_clinical_safety_floor", "to": "safety_verifier", "relation": "anchors", "artifact": "safety_floor"},
+    {"from": "anchor_clinical_safety_floor", "to": "pilot_safety_monitor", "relation": "anchors", "artifact": "safety_floor"},
+    {"from": "los_optimizer", "to": "counter_metric_check", "relation": "feeds", "artifact": "los_proposal"},
+    {"from": "return_optimizer", "to": "counter_metric_check", "relation": "feeds", "artifact": "return_proposal"},
+    {"from": "los_optimizer", "to": "safety_verifier", "relation": "feeds", "artifact": "los_proposal"},
+    {"from": "return_optimizer", "to": "safety_verifier", "relation": "feeds", "artifact": "return_proposal"},
+    {"from": "los_optimizer", "to": "proposal_arbiter", "relation": "feeds", "artifact": "los_proposal"},
+    {"from": "return_optimizer", "to": "proposal_arbiter", "relation": "feeds", "artifact": "return_proposal"},
+    {"from": "counter_metric_check", "to": "proposal_arbiter", "relation": "verifies", "artifact": "counter_metric_report"},
+    {"from": "safety_verifier", "to": "proposal_arbiter", "relation": "vetoes", "artifact": "verification_report"},
+    {"from": "proposal_arbiter", "to": "los_optimizer", "relation": "revises", "artifact": "rejection_feedback"},
+    {"from": "proposal_arbiter", "to": "return_optimizer", "relation": "revises", "artifact": "rejection_feedback"},
+    {"from": "proposal_arbiter", "to": "clinical_approval_gate", "relation": "feeds", "artifact": "candidate_revision"},
+    {"from": "proposal_arbiter", "to": "handoff", "relation": "escalates", "artifact": "escalation_note"},
+    {"from": "counter_metric_check", "to": "clinical_approval_gate", "relation": "feeds", "artifact": "counter_metric_report"},
+    {"from": "safety_verifier", "to": "clinical_approval_gate", "relation": "feeds", "artifact": "verification_report"},
+    {"from": "clinical_approval_gate", "to": "change_integrator", "relation": "feeds", "artifact": "approved_revision"},
+    {"from": "change_integrator", "to": "pilot_safety_monitor", "relation": "feeds", "artifact": "current_approved_version"},
+    {"from": "change_integrator", "to": "los_optimizer", "relation": "observes", "artifact": "current_approved_version"},
+    {"from": "change_integrator", "to": "return_optimizer", "relation": "observes", "artifact": "current_approved_version"},
+    {"from": "pilot_safety_monitor", "to": "change_integrator", "relation": "vetoes", "artifact": "rollback_signal"},
+    {"from": "pilot_safety_monitor", "to": "governance_review", "relation": "feeds", "artifact": "pilot_audit_report"},
+    {"from": "clinical_approval_gate", "to": "governance_review", "relation": "feeds", "artifact": "approval_record"},
+    {"from": "counter_metric_check", "to": "governance_review", "relation": "feeds", "artifact": "counter_metric_report"},
+    {"from": "governance_review", "to": "proposal_arbiter", "relation": "constrains", "artifact": "governance_decision"},
+    {"from": "pilot_safety_monitor", "to": "handoff", "relation": "escalates", "artifact": "rollback_signal"},
+    {"from": "governance_review", "to": "handoff", "relation": "hands_off", "artifact": "governance_decision"}
+  ]
+}

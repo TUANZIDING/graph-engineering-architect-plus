@@ -1,0 +1,6 @@
+{
+ "schema_version": "1.1",
+ "title": "提取与复核",
+ "mode": "linear_workflow",
+ "rationale": "A 提取、B 用提取表复算，结果一致即复核完成"
+}

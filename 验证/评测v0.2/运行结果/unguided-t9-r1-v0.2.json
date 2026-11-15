@@ -1,0 +1,259 @@
+{
+  "schema_version": "1.1",
+  "title": "胸痛分诊助手提示词优化控制架构（以科室标准为参照、以真实结局为锚）",
+  "mode": "graph_plus_loop",
+  "rationale": "核心是一个'改提示词→测一致率'的优化环，但不能是单纯 loop：(1) 金标准是三年前制定的，可能已落后于现行胸痛指南（高敏肌钙蛋白路径、主动脉夹层/肺栓塞识别等），把'与旧标准一致率'当唯一目标会把标准的缺陷固化进助手（Goodhart + 目标错位）；(2) 一致率对称计分，掩盖了不对称风险——低估分级（漏判 ACS/主动脉夹层/肺栓塞/张力性气胸）的代价远高于高估；(3) 优化者在开发集上反复调参必然过拟合，需要封存的独立验证集和新鲜上下文的验证者；(4) 最终用于急诊预检台是高风险临床部署，需要人类闸门、静默试运行和医务/伦理审批。因此需要多个独立反馈环（安全反指标环、真实结局审计环、治理环）围绕优化环，并由仲裁节点按'安全优先'裁决。",
+  "state": "draft",
+  "root_goal": {
+    "statement": "在不增加高危胸痛漏判的前提下，提高分诊助手分级与经科室复核确认的胸痛分诊标准之间的一致性，并在静默试运行证明安全后，作为护士决策辅助（非替代）用于急诊预检台。",
+    "human_owner": "Bruce",
+    "observable_success": "在封存的独立验证集上：高危类别（ACS/STEMI、主动脉夹层、肺栓塞、张力性气胸）低估分级例数为 0 且高危敏感度 ≥ 预设阈值；加权 Kappa 与一致率较基线显著提升且置信区间不跨基线；静默试运行（≥4 周或预设例数）中与真实结局对照无新增漏判；科室主任、医务处/伦理委员会书面批准后才以辅助模式上线。",
+    "metrics": ["holdout_weighted_kappa", "holdout_agreement_rate", "high_risk_under_triage_count", "high_risk_sensitivity", "over_triage_rate", "outcome_concordance"]
+  },
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "在开发集上改写分诊助手提示词并记录版本",
+      "在去标识化历史病例上运行助手并计算指标",
+      "生成标准-结局冲突清单提交人工复核",
+      "在静默模式下并行运行助手（输出不展示给预检护士、不影响真实分诊）",
+      "生成报告与停止交接包"
+    ],
+    "forbidden_actions": [
+      "修改或重写科室胸痛分诊标准文本（只能提出修订建议由人决定）",
+      "读取或使用封存验证集内容来改写提示词",
+      "使用未去标识化的患者数据或将患者数据发送到未经批准的外部服务",
+      "未经人工闸门批准将助手输出展示给预检护士或用于真实分诊",
+      "让助手做出最终分级决定或替代护士/医生判断",
+      "为提高一致率而放宽高危类别的识别规则"
+    ]
+  },
+  "frozen_rules": [
+    "安全优先：任何候选提示词只要在验证集上出现高危类别低估分级（under-triage），无论一致率多高，一律否决。",
+    "一致率只是代理指标；当标准与真实结局冲突时，不得通过让助手迎合标准来'提高一致率'，必须上报人工复核标准。",
+    "封存验证集与开发集按时间/病例严格隔离，优化者不可见验证集；验证集只在候选提交时由独立验证者使用，且每个候选版本只评一次。",
+    "标准版本冻结：本轮优化只对经 Bruce 与科室复核签字的标准版本计分；标准一旦修订，所有指标须基于新版本重新计算基线。",
+    "助手在临床中只作为辅助提示，最终分级由预检护士/医生决定；任何生产部署前必须经过静默试运行与人工闸门。",
+    "所有患者数据去标识化处理，遵守医院数据管理与伦理审批要求。"
+  ],
+  "approval": {
+    "status": "pending"
+  },
+  "budget": {
+    "max_agents": 8,
+    "max_concurrency": 3,
+    "max_retries": 2,
+    "max_cost_units": 200
+  },
+  "failure_policy": "任一节点失败最多重试 2 次；安全反指标环发现高危漏判立即否决当前候选并回退到上一个安全版本；连续 5 轮优化在验证集上无显著提升，或开发集与验证集差距扩大（过拟合信号），则停止优化环并交接；标准-结局冲突率超过预设阈值（如 >5%）时暂停优化，先升级为标准复核；预算耗尽或任何数据合规疑问时停止并交给 Bruce。",
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "达到 observable_success 全部条件，等待部署闸门",
+      "优化环达到 max_iterations 或连续 5 轮无验证集提升",
+      "出现无法通过提示词修复的高危漏判",
+      "标准与真实结局冲突率超阈值，需要科室修订标准",
+      "过拟合信号：开发集提升而验证集持平或下降",
+      "预算耗尽、数据合规或伦理问题"
+    ],
+    "artifact": "交接包：当前最优安全提示词及版本历史、开发/验证集指标曲线、高危漏判与过度分诊病例清单、标准-结局冲突清单与修订建议、静默试运行结果（如有）、未决风险与下一步建议"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "external_inputs": [
+    "科室胸痛分诊标准原文（三年前版本）",
+    "现行胸痛评估相关指南与共识",
+    "去标识化的历史胸痛就诊病例（主诉、生命体征、心电图结论、预检分级）",
+    "病例最终诊断与 30 天主要不良心血管事件等结局"
+  ],
+  "anchors": [
+    {
+      "node_id": "anchor_standard",
+      "source": "经 Bruce 与科室复核、签字冻结的胸痛分诊标准版本（以三年前标准为底稿，对照现行指南）",
+      "evidence_form": "带版本号与复核签字的标准文档 + 复核记录（逐条：保留/存疑/建议修订）",
+      "owner": "Bruce",
+      "freshness_rule": "每次优化周期开始前确认版本；现行指南更新或冲突清单触发时须重新复核；超过 max_age_days 未确认则停止计分",
+      "frozen": true,
+      "max_age_days": 180,
+      "last_confirmed": "2023-11-15"
+    },
+    {
+      "node_id": "anchor_outcomes",
+      "source": "去标识化病例的最终诊断与 30 天结局（病案系统/随访），独立于科室标准",
+      "evidence_form": "病例级结局标签表（最终诊断、是否高危疾病、30 天 MACE/死亡），双人核对",
+      "owner": "Bruce",
+      "freshness_rule": "每批新病例结局随访满 30 天后入库；用于审计的结局数据不超过 max_age_days 未更新",
+      "frozen": true,
+      "max_age_days": 90,
+      "last_confirmed": "2026-11-15"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "anchor_standard",
+      "kind": "anchor",
+      "responsibility": "提供冻结版本的胸痛分诊标准作为一致率计分参照；本节点只读，不被优化环修改。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["standard_review_decision"], "outputs": ["frozen_standard_version"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "anchor_outcomes",
+      "kind": "anchor",
+      "responsibility": "提供与标准独立的真实结局证据，用于检验'标准本身是否正确'和高危漏判。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["病例最终诊断与 30 天结局"], "outputs": ["outcome_labels"]},
+      "side_effect": "none"
+    },
+    {
+      "id": "gate_standard_review",
+      "kind": "human_gate",
+      "responsibility": "Bruce 与科室对三年前标准逐条对照现行指南复核，决定是否可作为金标准、哪些条款存疑或需修订，并签字冻结版本；也接收审计环上报的标准-结局冲突。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["科室胸痛分诊标准原文（三年前版本）", "现行胸痛评估相关指南与共识", "standard_conflict_report"], "outputs": ["standard_review_decision"]},
+      "cadence_tier": "human",
+      "side_effect": "none"
+    },
+    {
+      "id": "dataset_builder",
+      "kind": "execution",
+      "responsibility": "构建去标识化病例集，按标准由两名临床人员独立标注分级（不一致者仲裁），按时间切分为开发集与封存验证集，并保证高危类别在验证集中有足够例数。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["去标识化的历史胸痛就诊病例（主诉、生命体征、心电图结论、预检分级）", "frozen_standard_version", "outcome_labels"], "outputs": ["dev_set", "sealed_holdout_set", "labeling_agreement_report"]},
+      "writes": ["dev_set", "sealed_holdout_set"],
+      "side_effect": "internal-reversible"
+    },
+    {
+      "id": "prompt_optimizer",
+      "kind": "execution_loop",
+      "responsibility": "在开发集上分析分歧病例并改写分诊助手提示词，每轮产出一个带版本号与改动说明的候选；不可见验证集，不得改写标准。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["dev_set", "frozen_standard_version", "arbitration_ruling"], "outputs": ["candidate_prompt", "dev_metrics", "change_log"]},
+      "max_iterations": 20,
+      "optimizes": "holdout_weighted_kappa",
+      "evidence_sources": ["dev_set", "frozen_standard_version"],
+      "writes": ["candidate_prompt", "change_log"],
+      "cadence_tier": "fast",
+      "side_effect": "internal-reversible"
+    },
+    {
+      "id": "holdout_verifier",
+      "kind": "verification_loop",
+      "responsibility": "以全新独立上下文在封存验证集上对每个候选只评一次，计算一致率、加权 Kappa 及置信区间，并与基线和上一版本比较；同时报告开发集-验证集差距作为过拟合信号。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["candidate_prompt", "sealed_holdout_set", "frozen_standard_version"], "outputs": ["holdout_metrics", "overfit_signal"]},
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["sealed_holdout_set", "frozen_standard_version"],
+      "side_effect": "none"
+    },
+    {
+      "id": "safety_counter_metric",
+      "kind": "counter_metric_loop",
+      "responsibility": "与一致率配对的反指标：在验证集上按混淆矩阵方向分别统计高危类别低估分级（漏判）与过度分诊率，并对照真实结局检查高危敏感度；出现任何高危低估即否决候选。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["candidate_prompt", "sealed_holdout_set", "outcome_labels"], "outputs": ["safety_report", "safety_veto"]},
+      "max_iterations": 20,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["sealed_holdout_set", "outcome_labels"],
+      "side_effect": "none"
+    },
+    {
+      "id": "outcome_audit",
+      "kind": "audit_loop",
+      "responsibility": "用真实结局审计标准本身与助手：找出'助手与标准一致但与结局冲突'和'助手与标准不一致但符合结局'的病例，区分是提示词问题还是标准缺陷；标准缺陷不交给优化者修，而是上报人工复核。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["holdout_metrics", "safety_report", "outcome_labels", "frozen_standard_version"], "outputs": ["standard_conflict_report", "outcome_concordance"]},
+      "max_iterations": 10,
+      "context_scope": "fresh-independent",
+      "evidence_sources": ["outcome_labels"],
+      "cadence_tier": "medium",
+      "side_effect": "none"
+    },
+    {
+      "id": "arbitration",
+      "kind": "arbitration",
+      "responsibility": "汇总验证、反指标与审计结果，裁决候选的去留：接受/回退/暂停优化并升级标准复核；冲突时按优先级裁决。",
+      "owner": "Bruce",
+      "priority_policy": "数据合规 > 高危漏判否决 > 标准-结局冲突上报 > 过拟合信号 > 一致率/Kappa 提升 > 过度分诊率 > 提示词简洁性",
+      "contract": {"inputs": ["holdout_metrics", "overfit_signal", "safety_report", "safety_veto", "standard_conflict_report"], "outputs": ["arbitration_ruling", "best_safe_prompt"]},
+      "writes": ["best_safe_prompt"],
+      "side_effect": "internal-reversible"
+    },
+    {
+      "id": "governance",
+      "kind": "governance_loop",
+      "responsibility": "按周期检查标准版本时效、验证集是否被间接泄漏（评估次数）、指标是否错位、预算与重试，必要时刷新验证集或冻结整个流程。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["arbitration_ruling", "change_log", "holdout_metrics", "frozen_standard_version"], "outputs": ["governance_decision"]},
+      "max_iterations": 6,
+      "cadence_tier": "governance",
+      "side_effect": "none"
+    },
+    {
+      "id": "shadow_trial",
+      "kind": "execution",
+      "responsibility": "经试运行闸门批准后，在预检台以静默模式并行运行最优安全提示词（输出不展示、不影响分诊），前瞻收集与护士实际分级及 30 天结局的对照数据。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["best_safe_prompt", "shadow_trial_approval"], "outputs": ["shadow_trial_report"]},
+      "side_effect": "internal-reversible"
+    },
+    {
+      "id": "gate_shadow_trial",
+      "kind": "human_gate",
+      "responsibility": "Bruce 审阅离线结果，并取得科室主任与医务处/伦理批准后，才允许进入静默试运行。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["best_safe_prompt", "safety_report", "holdout_metrics", "standard_conflict_report"], "outputs": ["shadow_trial_approval"]},
+      "cadence_tier": "human",
+      "side_effect": "none"
+    },
+    {
+      "id": "gate_deployment",
+      "kind": "human_gate",
+      "responsibility": "基于静默试运行结果，由 Bruce、科室主任、医务处/伦理共同决定是否以'护士决策辅助'模式上线；上线后须有持续监测与一键停用机制。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["shadow_trial_report", "safety_report"], "outputs": ["deployment_decision"]},
+      "cadence_tier": "human",
+      "side_effect": "high-risk"
+    },
+    {
+      "id": "stop_handoff",
+      "kind": "stop_handoff",
+      "responsibility": "满足任一停止条件时打包交接包交给 Bruce。",
+      "owner": "Bruce",
+      "contract": {"inputs": ["arbitration_ruling", "governance_decision", "deployment_decision", "best_safe_prompt"], "outputs": ["handoff_package"]},
+      "side_effect": "none"
+    }
+  ],
+  "edges": [
+    {"from": "gate_standard_review", "to": "anchor_standard", "relation": "feeds", "artifact": "standard_review_decision"},
+    {"from": "anchor_standard", "to": "dataset_builder", "relation": "anchors", "artifact": "frozen_standard_version"},
+    {"from": "anchor_outcomes", "to": "dataset_builder", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "anchor_standard", "to": "prompt_optimizer", "relation": "anchors", "artifact": "frozen_standard_version"},
+    {"from": "dataset_builder", "to": "prompt_optimizer", "relation": "feeds", "artifact": "dev_set"},
+    {"from": "dataset_builder", "to": "holdout_verifier", "relation": "feeds", "artifact": "sealed_holdout_set"},
+    {"from": "dataset_builder", "to": "safety_counter_metric", "relation": "feeds", "artifact": "sealed_holdout_set"},
+    {"from": "anchor_standard", "to": "holdout_verifier", "relation": "anchors", "artifact": "frozen_standard_version"},
+    {"from": "anchor_outcomes", "to": "safety_counter_metric", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "anchor_outcomes", "to": "outcome_audit", "relation": "anchors", "artifact": "outcome_labels"},
+    {"from": "anchor_standard", "to": "outcome_audit", "relation": "anchors", "artifact": "frozen_standard_version"},
+    {"from": "prompt_optimizer", "to": "holdout_verifier", "relation": "feeds", "artifact": "candidate_prompt"},
+    {"from": "prompt_optimizer", "to": "safety_counter_metric", "relation": "feeds", "artifact": "candidate_prompt"},
+    {"from": "holdout_verifier", "to": "arbitration", "relation": "verifies", "artifact": "holdout_metrics"},
+    {"from": "holdout_verifier", "to": "outcome_audit", "relation": "feeds", "artifact": "holdout_metrics"},
+    {"from": "safety_counter_metric", "to": "arbitration", "relation": "vetoes", "artifact": "safety_veto"},
+    {"from": "safety_counter_metric", "to": "outcome_audit", "relation": "feeds", "artifact": "safety_report"},
+    {"from": "outcome_audit", "to": "arbitration", "relation": "feeds", "artifact": "standard_conflict_report"},
+    {"from": "outcome_audit", "to": "gate_standard_review", "relation": "escalates", "artifact": "standard_conflict_report"},
+    {"from": "arbitration", "to": "prompt_optimizer", "relation": "revises", "artifact": "arbitration_ruling"},
+    {"from": "governance", "to": "arbitration", "relation": "observes", "artifact": "arbitration_ruling"},
+    {"from": "governance", "to": "prompt_optimizer", "relation": "constrains", "artifact": "governance_decision"},
+    {"from": "governance", "to": "stop_handoff", "relation": "escalates", "artifact": "governance_decision"},
+    {"from": "arbitration", "to": "gate_shadow_trial", "relation": "escalates", "artifact": "best_safe_prompt"},
+    {"from": "gate_shadow_trial", "to": "shadow_trial", "relation": "feeds", "artifact": "shadow_trial_approval"},
+    {"from": "shadow_trial", "to": "gate_deployment", "relation": "feeds", "artifact": "shadow_trial_report"},
+    {"from": "gate_deployment", "to": "stop_handoff", "relation": "hands_off", "artifact": "deployment_decision"},
+    {"from": "arbitration", "to": "stop_handoff", "relation": "hands_off", "artifact": "arbitration_ruling"}
+  ]
+}
