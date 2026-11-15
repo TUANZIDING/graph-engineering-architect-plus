@@ -1,0 +1,26 @@
+flowchart LR
+  human_approval{{"human-approval<br/><small>human_gate</small>"}}
+  data_anchor[("data-anchor<br/><small>anchor</small>")]
+  signal_analysis["signal-analysis<br/><small>execution_loop</small>"]
+  independent_rerun[/"independent-rerun<br/><small>verification_loop</small>"/]
+  negative_control[/"negative-control<br/><small>counter_metric_loop</small>"/]
+  arbiter{"arbiter<br/><small>arbitration</small>"}
+  drafting["drafting<br/><small>synthesis</small>"]
+  claim_audit[/"claim-audit<br/><small>audit_loop</small>"/]
+  author_gate{{"author-gate<br/><small>human_gate</small>"}}
+  stop_handoff(["stop-handoff<br/><small>stop_handoff</small>"])
+  human_approval -->|constrains: approval-record| data_anchor
+  human_approval -->|constrains: approval-record| signal_analysis
+  data_anchor -->|feeds: frozen-evidence| signal_analysis
+  data_anchor -.->|anchors: frozen-evidence| independent_rerun
+  data_anchor -.->|anchors: frozen-evidence| claim_audit
+  signal_analysis -->|feeds: signal-table| independent_rerun
+  signal_analysis -->|feeds: signal-table| negative_control
+  negative_control -.->|observes: false-positive-report| signal_analysis
+  independent_rerun -->|escalates: rerun-report| arbiter
+  negative_control -->|escalates: false-positive-report| arbiter
+  independent_rerun --x|vetoes: rerun-report| stop_handoff
+  arbiter -->|constrains: accepted-signals| drafting
+  drafting -->|feeds: manuscript-draft| claim_audit
+  claim_audit -->|constrains: claim-audit-report| author_gate
+  author_gate -->|hands_off: author-decision| stop_handoff

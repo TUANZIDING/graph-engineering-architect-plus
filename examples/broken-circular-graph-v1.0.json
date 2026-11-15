@@ -1,0 +1,318 @@
+{
+  "schema_version": "1.1",
+  "title": "反例：自我确认的 FAERS 流程（用于测试诊断）",
+  "mode": "graph_plus_loop",
+  "state": "awaiting_approval",
+  "root_goal": {
+    "statement": "用公开药物警戒数据写一篇结论可追溯、统计可复现的药学 SCI 初稿",
+    "human_owner": "Bruce",
+    "observable_success": "每个结论都能回溯到冻结数据快照中的病例计数，独立复算一致，作者确认初稿",
+    "metrics": [
+      "reproducible_signal_count",
+      "claim_traceability_rate"
+    ]
+  },
+  "external_inputs": [
+    "faers-snapshot",
+    "jader-snapshot",
+    "analysis-protocol",
+    "graph-spec",
+    "run-status",
+    "target-journal-guide"
+  ],
+  "permissions": {
+    "human_owner": "Bruce",
+    "allowed_actions": [
+      "本地分析",
+      "生成草稿",
+      "推送到私有仓库 [skip ci]"
+    ],
+    "forbidden_actions": [
+      "期刊投稿",
+      "对外发送邮件",
+      "修改数据快照",
+      "修改预注册方案"
+    ]
+  },
+  "frozen_rules": [
+    "数据快照与分析方案只能经 human gate 修改",
+    "复算者不得读取主分析代码，只按方案重新实现",
+    "阴性对照与预设阈值（ROR 下限>1 且 a>=3）不可在看到结果后调整"
+  ],
+  "approval": {
+    "status": "pending",
+    "record": "等待 Bruce 确认 Graph"
+  },
+  "budget": {
+    "max_agents": 6,
+    "max_concurrency": 3,
+    "max_retries": 1,
+    "max_cost_units": 40
+  },
+  "failure_policy": {
+    "on_validation_failure": "stop_and_handoff",
+    "on_budget_exhausted": "handoff_to_human",
+    "on_reproduction_mismatch": "veto_and_escalate"
+  },
+  "stop_handoff": {
+    "owner": "Bruce",
+    "conditions": [
+      "复算不一致",
+      "预算耗尽",
+      "锚点过期",
+      "权限冲突"
+    ],
+    "artifact": "handoff-record"
+  },
+  "execution_contract": {
+    "external_execution": false
+  },
+  "anchors": [
+    {
+      "node_id": "data-anchor",
+      "source": "FAERS 2004Q1-2026Q2 + JADER 2026-06 原始文件 SHA-256 清单",
+      "evidence_form": "文件哈希 + 预注册分析方案 PDF",
+      "owner": "Bruce",
+      "freshness_rule": "每次运行前核对哈希；超过 max_age_days 需重新确认",
+      "max_age_days": 30,
+      "last_confirmed": "2026-08-01",
+      "frozen": true
+    }
+  ],
+  "nodes": [
+    {
+      "id": "human-approval",
+      "kind": "human_gate",
+      "responsibility": "确认目标、方案、锚点与权限",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "graph-spec"
+        ],
+        "outputs": [
+          "approval-record"
+        ]
+      }
+    },
+    {
+      "id": "data-anchor",
+      "kind": "anchor",
+      "responsibility": "提供执行者无法改写的数据快照与方案",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "faers-snapshot",
+          "jader-snapshot",
+          "analysis-protocol"
+        ],
+        "outputs": [
+          "frozen-evidence"
+        ]
+      }
+    },
+    {
+      "id": "signal-analysis",
+      "kind": "execution_loop",
+      "responsibility": "按方案做去重、映射与不相称性分析",
+      "owner": "分析执行者",
+      "optimizes": "reproducible_signal_count",
+      "max_iterations": 3,
+      "writes": [
+        "results/main"
+      ],
+      "evidence_sources": [
+        "frozen-evidence",
+        "main-analysis-code"
+      ],
+      "contract": {
+        "inputs": [
+          "approval-record",
+          "frozen-evidence"
+        ],
+        "outputs": [
+          "signal-table"
+        ]
+      }
+    },
+    {
+      "id": "independent-rerun",
+      "kind": "verification_loop",
+      "responsibility": "不看主代码，按方案重算核心信号",
+      "owner": "分析执行者",
+      "context_scope": "fresh-independent",
+      "max_iterations": 2,
+      "writes": [
+        "results/rerun"
+      ],
+      "evidence_sources": [
+        "frozen-evidence",
+        "main-analysis-code"
+      ],
+      "contract": {
+        "inputs": [
+          "signal-table",
+          "frozen-evidence"
+        ],
+        "outputs": [
+          "rerun-report"
+        ]
+      }
+    },
+    {
+      "id": "arbiter",
+      "kind": "arbitration",
+      "responsibility": "复算与反指标冲突时按冻结规则裁决",
+      "owner": "仲裁者",
+      "contract": {
+        "inputs": [
+          "rerun-report"
+        ],
+        "outputs": [
+          "accepted-signals"
+        ]
+      }
+    },
+    {
+      "id": "drafting",
+      "kind": "synthesis",
+      "responsibility": "只用已接受信号写初稿并逐条标注来源计数",
+      "owner": "写作执行者",
+      "writes": [
+        "manuscript/draft"
+      ],
+      "contract": {
+        "inputs": [
+          "accepted-signals",
+          "target-journal-guide"
+        ],
+        "outputs": [
+          "manuscript-draft"
+        ]
+      }
+    },
+    {
+      "id": "claim-audit",
+      "kind": "audit_loop",
+      "responsibility": "逐句核对结论与病例计数，标出夸大因果的措辞",
+      "owner": "独立审稿者",
+      "context_scope": "fresh-independent",
+      "max_iterations": 2,
+      "evidence_sources": [
+        "frozen-evidence",
+        "accepted-signals"
+      ],
+      "contract": {
+        "inputs": [
+          "manuscript-draft",
+          "frozen-evidence"
+        ],
+        "outputs": [
+          "claim-audit-report"
+        ]
+      }
+    },
+    {
+      "id": "author-gate",
+      "kind": "human_gate",
+      "responsibility": "作者确认初稿；投稿另需单独授权",
+      "owner": "Bruce",
+      "side_effect": "none",
+      "contract": {
+        "inputs": [
+          "claim-audit-report"
+        ],
+        "outputs": [
+          "author-decision"
+        ]
+      }
+    },
+    {
+      "id": "stop-handoff",
+      "kind": "stop_handoff",
+      "responsibility": "收束或在失败时交接",
+      "owner": "Bruce",
+      "contract": {
+        "inputs": [
+          "run-status"
+        ],
+        "outputs": [
+          "handoff-record"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "human-approval",
+      "to": "data-anchor",
+      "relation": "constrains",
+      "artifact": "approval-record"
+    },
+    {
+      "from": "human-approval",
+      "to": "signal-analysis",
+      "relation": "constrains",
+      "artifact": "approval-record"
+    },
+    {
+      "from": "data-anchor",
+      "to": "signal-analysis",
+      "relation": "feeds",
+      "artifact": "frozen-evidence"
+    },
+    {
+      "from": "data-anchor",
+      "to": "independent-rerun",
+      "relation": "anchors",
+      "artifact": "frozen-evidence"
+    },
+    {
+      "from": "data-anchor",
+      "to": "claim-audit",
+      "relation": "anchors",
+      "artifact": "frozen-evidence"
+    },
+    {
+      "from": "signal-analysis",
+      "to": "independent-rerun",
+      "relation": "feeds",
+      "artifact": "signal-table"
+    },
+    {
+      "from": "independent-rerun",
+      "to": "arbiter",
+      "relation": "escalates",
+      "artifact": "rerun-report"
+    },
+    {
+      "from": "independent-rerun",
+      "to": "stop-handoff",
+      "relation": "vetoes",
+      "artifact": "rerun-report"
+    },
+    {
+      "from": "arbiter",
+      "to": "drafting",
+      "relation": "constrains",
+      "artifact": "accepted-signals"
+    },
+    {
+      "from": "drafting",
+      "to": "claim-audit",
+      "relation": "feeds",
+      "artifact": "manuscript-draft"
+    },
+    {
+      "from": "claim-audit",
+      "to": "author-gate",
+      "relation": "constrains",
+      "artifact": "claim-audit-report"
+    },
+    {
+      "from": "author-gate",
+      "to": "stop-handoff",
+      "relation": "hands_off",
+      "artifact": "author-decision"
+    }
+  ]
+}

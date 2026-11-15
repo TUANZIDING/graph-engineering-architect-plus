@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "graph_id": "trauma-record-quality-audit",
+  "classification": {
+    "mode": "graph",
+    "rationale": "病历完整率、真实质量、科室负担三者会互相拉扯，需要独立抽查与人工裁决。"
+  },
+  "root_goal": {
+    "statement": "急诊创伤病历在归档后经得起独立抽查",
+    "owner": "急诊科质控主任",
+    "success_definition": "随机抽查病历的关键要素与原始记录一致率达到科室既定标准，且质控主任签字",
+    "out_of_scope": [
+      "自动修改已归档病历",
+      "以完整率替代临床质量判断"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "fill",
+      "kind": "execution_loop",
+      "responsibility": "按模板补全与修订病历",
+      "owner": "书写医生 + 辅助 Agent",
+      "cadence": "Per revision",
+      "inputs": [
+        "质控模板",
+        "原始护理与检验记录"
+      ],
+      "outputs": [
+        "待审病历"
+      ]
+    },
+    {
+      "id": "check",
+      "kind": "verification_loop",
+      "responsibility": "逐项核对关键要素与原始记录",
+      "owner": "独立质控员",
+      "cadence": "Per candidate record",
+      "inputs": [
+        "待审病历",
+        "原始护理与检验记录"
+      ],
+      "outputs": [
+        "核对报告"
+      ]
+    },
+    {
+      "id": "burden",
+      "kind": "counter_metric_loop",
+      "responsibility": "盯住补写时长与复制粘贴痕迹",
+      "owner": "科室秘书",
+      "cadence": "Per candidate record",
+      "inputs": [
+        "待审病历",
+        "核对报告"
+      ],
+      "outputs": [
+        "负担与模板化警示"
+      ]
+    },
+    {
+      "id": "source",
+      "kind": "anchor",
+      "responsibility": "冻结的原始记录快照",
+      "owner": "信息科",
+      "cadence": "Refresh when the HIS export changes",
+      "inputs": [
+        "HIS 导出"
+      ],
+      "outputs": [
+        "原始护理与检验记录"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "human_gate",
+      "responsibility": "签字归档或退回",
+      "owner": "急诊科质控主任",
+      "cadence": "Per release candidate",
+      "inputs": [
+        "待审病历",
+        "核对结论",
+        "负担警示"
+      ],
+      "outputs": [
+        "归档决定"
+      ]
+    },
+    {
+      "id": "close",
+      "kind": "stop_handoff",
+      "responsibility": "收束、退回或交接",
+      "owner": "质控秘书",
+      "cadence": "On success, failure, block, or budget exhaustion",
+      "inputs": [
+        "归档决定"
+      ],
+      "outputs": [
+        "交接单"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "source",
+      "to": "fill",
+      "relation": "anchors",
+      "artifact": "原始护理与检验记录"
+    },
+    {
+      "from": "fill",
+      "to": "check",
+      "relation": "feeds",
+      "artifact": "待审病历"
+    },
+    {
+      "from": "check",
+      "to": "fill",
+      "relation": "verifies",
+      "artifact": "核对报告"
+    },
+    {
+      "from": "burden",
+      "to": "sign",
+      "relation": "vetoes",
+      "artifact": "未解决的模板化警示"
+    },
+    {
+      "from": "check",
+      "to": "sign",
+      "relation": "constrains",
+      "artifact": "核对结论"
+    },
+    {
+      "from": "sign",
+      "to": "close",
+      "relation": "hands_off",
+      "artifact": "归档决定"
+    }
+  ],
+  "anchors": [
+    {
+      "node_id": "source",
+      "evidence": "HIS 中护理、检验原始条目",
+      "source": "信息科导出，书写方无写权限",
+      "owner": "信息科主任",
+      "freshness_rule": "HIS 字段变更后重导出",
+      "frozen": true
+    }
+  ],
+  "governance": {
+    "arbitration": {
+      "owner": "急诊科质控主任",
+      "priority_policy": "与原始记录一致 > 患者安全要素 > 完整率 > 书写速度"
+    },
+    "goal_change": "human_approval",
+    "frozen_items": [
+      "原始记录快照",
+      "关键要素清单",
+      "签字归档门"
+    ],
+    "approval_required": [
+      "根目标变更",
+      "锚点变更",
+      "归档",
+      "权限扩大"
+    ],
+    "stop_conditions": {
+      "success": "核对通过且质控主任签字",
+      "failed": "关键要素无法在原始记录中找到依据",
+      "blocked": "原始记录或质控主任不可用",
+      "budget_exhausted": "两轮退回后仍不通过"
+    }
+  },
+  "verification": {
+    "independence_statement": "质控员直接调阅 HIS 原始条目，不采信书写方的自查表。",
+    "checks": [
+      {
+        "criterion": "关键要素与原始记录一致",
+        "verifier_node": "check",
+        "evidence": "逐项核对报告",
+        "failure_signal": "任一关键要素无原始依据或与原始记录矛盾"
+      }
+    ]
+  }
+}
